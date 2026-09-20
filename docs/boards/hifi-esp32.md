@@ -103,3 +103,16 @@ The Esparagus variants use the same I2S pins and leave the SPI block unconfigure
 - [Bluetooth A2DP](../features/bluetooth.md)
 - [Ethernet (W5500)](../features/ethernet.md)
 - [Build environments](../reference/build-environments.md)
+
+## HiFi-ESP32-Plus
+
+The **HiFi-ESP32-Plus** (board rev J1 and later) swaps the PCM5100 for a
+**PCM5122**: same line-level output and the same I2S pins (BCK 26, WS 25,
+DATA 22), but the DAC is controlled over I2C (SDA 21, SCL 27, address 0x4D).
+The firmware programs it at boot to run its PLL from BCK, since the board does
+not wire MCLK, and uses the chip's digital volume instead of software
+attenuation. GPIO 13 is the board's DAC enable (XSMT) and is raised only while
+audio is playing. Ethernet and the OLED sit on the shared SPI bus exactly as on
+the HiFi-ESP32. Use the `hifi-esp32-plus-bt` build; the PCM5122's DSP is not
+exposed.
+

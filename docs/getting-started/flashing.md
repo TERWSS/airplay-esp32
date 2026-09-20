@@ -235,6 +235,20 @@ W5500 Ethernet and an OLED; the Esparagus ones do not.
       <span slot="not-allowed"></span>
     </esp-web-install-button>
 
+-   __HiFi-ESP32-Plus__
+
+    ESP32 (rev J1+) + PCM5122 with I2C control, Ethernet and OLED. Includes Bluetooth A2DP.
+
+    <esp-web-install-button manifest="/airplay-esp32/firmware/hifi-esp32-plus-bt.json">
+      <button slot="activate" class="md-button md-button--primary">Install</button>
+      <span slot="unsupported">Your browser cannot flash over USB. Use Chrome, Edge or Opera on desktop.</span>
+      <span slot="not-allowed">Flashing needs a secure (HTTPS) connection.</span>
+    </esp-web-install-button><esp-web-install-button class="install-beta" manifest="/airplay-esp32/firmware/beta/hifi-esp32-plus-bt.json">
+      <button slot="activate" class="md-button md-button--beta">Install beta</button>
+      <span slot="unsupported"></span>
+      <span slot="not-allowed"></span>
+    </esp-web-install-button>
+
 -   __HiFi-Esparagus__
 
     ESP32 + PCM5100, WiFi only. Includes Bluetooth A2DP.
