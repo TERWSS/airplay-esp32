@@ -39,7 +39,7 @@
 #define PCM51XX_REG_POWER_STATE 0x76 // read-only power state
 
 // Page 1 registers
-#define PCM51XX_PAGE_ANALOG    0x01
+#define PCM51XX_PAGE_ANALOG     0x01
 #define PCM51XX_REG_ANALOG_GAIN 0x02 // bit4 LAGN, bit0 RAGN: 0dB or -6dB
 
 #define PCM51XX_RESET_ALL 0x11 // RSTM modules + RSTR registers, auto-clearing
@@ -60,7 +60,7 @@
   (PCM51XX_ANALOG_GAIN_LAGN | PCM51XX_ANALOG_GAIN_RAGN)
 #define PCM51XX_ANALOG_GAIN_IS_MINUS_6DB 1
 #else
-#define PCM51XX_ANALOG_GAIN_VAL 0x00
+#define PCM51XX_ANALOG_GAIN_VAL          0x00
 #define PCM51XX_ANALOG_GAIN_IS_MINUS_6DB 0
 #endif
 
@@ -177,8 +177,8 @@ static esp_err_t configure_locked(void) {
   // assume.
   ESP_RETURN_ON_ERROR(wr(PCM51XX_REG_PAGE, PCM51XX_PAGE_ANALOG), TAG,
                       "Select page failed");
-  ESP_RETURN_ON_ERROR(wr(PCM51XX_REG_ANALOG_GAIN, PCM51XX_ANALOG_GAIN_VAL),
-                      TAG, "Analog gain failed");
+  ESP_RETURN_ON_ERROR(wr(PCM51XX_REG_ANALOG_GAIN, PCM51XX_ANALOG_GAIN_VAL), TAG,
+                      "Analog gain failed");
   ESP_RETURN_ON_ERROR(wr(PCM51XX_REG_PAGE, 0x00), TAG, "Select page failed");
 
   ESP_RETURN_ON_ERROR(apply_volume_locked(), TAG, "Volume setup failed");

@@ -3,8 +3,9 @@
 #include "board_common.h"
 #include "sdkconfig.h"
 
-#define BOARD_NAME        "Amped-Esparagus-Plus-S3"
-#define BOARD_DESCRIPTION "ESP32-S3 with PCM5122 I2C DAC, TPA3118 amp, SPI Ethernet"
+#define BOARD_NAME "Amped-Esparagus-Plus-S3"
+#define BOARD_DESCRIPTION \
+  "ESP32-S3 with PCM5122 I2C DAC, TPA3118 amp, SPI Ethernet"
 
 // I2C configuration (PCM5122 DAC control)
 #define BOARD_I2C_PORT     0
