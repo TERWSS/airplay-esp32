@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 airplay-esp32 contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 /**
  * @file display_st7789.c
  * @brief ST7789 TFT display driver using esp_lcd + LVGL 9 (esp_lvgl_port)

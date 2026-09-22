@@ -62,6 +62,9 @@ jobs:
       - name: Check formatting
         run: scripts/format.sh --check
 
+      - name: Test PCM512x failure handling
+        run: python3 tests/pcm51xx/run.py
+
   lint-check:
     needs: changes
     if: needs.changes.outputs.code == 'true'

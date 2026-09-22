@@ -12,6 +12,31 @@ for that route. Clone with submodules:
 git clone --recursive https://github.com/rbouteiller/airplay-esp32
 ```
 
+## Licensing of contributions
+
+airplay-esp32 is GPL-3.0-or-later. Contributions are accepted on the same terms — inbound
+equals outbound — so by opening a pull request you license your changes under
+GPL-3.0-or-later and agree that they may be distributed with the Espressif binary
+component exception in `LICENSE-EXCEPTION`. You keep the copyright on what you write.
+
+Please sign off your commits to certify that you have the right to submit them under
+[the Developer Certificate of Origin](https://developercertificate.org/):
+
+```bash
+git commit -s
+```
+
+New C and H files should start with the SPDX header used throughout the tree:
+
+```c
+// SPDX-FileCopyrightText: 2026 airplay-esp32 contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+```
+
+Do not paste code in from projects under a license that is incompatible with the GPL, and
+say where it came from when you bring in code that is compatible, so it can be recorded in
+`THIRD-PARTY-NOTICES.md`.
+
 ## Formatting
 
 C and header files are formatted with `clang-format` 22.1.4 in LLVM style: 2-space indent,

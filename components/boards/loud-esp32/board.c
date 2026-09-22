@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 airplay-esp32 contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 /**
  * @file board.c
  * @brief Board implementation for the CONFIG_DAC_ENABLE_GPIO family:

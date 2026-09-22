@@ -94,6 +94,10 @@ jobs:
 
           Untested, may not boot, and is replaced by the next push to staging.
           For a supported build use the [latest release](https://github.com/$GITHUB_REPOSITORY/releases/latest).
+
+          Free software under [GPL-3.0-or-later](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/LICENSE),
+          with the Espressif binary component [exception](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/LICENSE-EXCEPTION).
+          The complete corresponding source is this repository at $GITHUB_SHA.
           EOF
 
           # Recreated rather than updated so the tag follows the staging tip.

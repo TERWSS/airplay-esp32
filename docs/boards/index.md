@@ -38,6 +38,7 @@ original ESP32.
 | [Esparagus Audio Brick Dual](esparagus-audio-brick-dual-dac.md) | ESP32-S3 | 2× TAS58xx | — | yes | yes |
 | [Esparagus Louder](esparagus-audio-brick.md#esparagus-louder) | ESP32 / S3 | TAS58xx | ESP32 only | yes | yes |
 | [HiFi-ESP32](hifi-esp32.md) | ESP32 / S3 | PCM5100, line level | ESP32 only | yes | yes |
+| [HiFi-ESP32-Plus](hifi-esp32.md#hifi-esp32-plus) | ESP32 | PCM5122, line level, hardware volume | yes | yes | yes |
 | [HiFi-Esparagus](hifi-esp32.md) | ESP32 / S3 | PCM5100, line level | ESP32 only | — | yes |
 | [Loud-ESP32](loud-esp32.md) | ESP32 / S3 | MAX98357A | ESP32 only | yes | yes |
 | [Loud-Esparagus](loud-esp32.md) | ESP32 | 2× MAX98357A | yes | — | yes |
