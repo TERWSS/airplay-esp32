@@ -23,9 +23,9 @@
 #define BOARD_LED_ERROR_GPIO  CONFIG_LED_ERROR_GPIO
 #define BOARD_LED_RGB_GPIO    CONFIG_LED_RGB_GPIO
 
-// TPA3118 UNMUTE pin (active-high; toggled dynamically from RTSP playback
-// events by board.c — the PCM5122 is I2C-controlled, but the amp stage
-// downstream of it has its own, separate enable pin)
+// TPA3118 UNMUTE pin: high only while playing. Driven by the dac_pcm51xx
+// driver itself (same pin role as XSMT on the Sonocotta Plus boards), not
+// by board.c.
 #define BOARD_DAC_ENABLE_GPIO CONFIG_DAC_ENABLE_GPIO
 
 // Battery monitoring

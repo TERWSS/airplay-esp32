@@ -3,19 +3,16 @@
  * @brief Board implementation for Amped-Esparagus-Plus-S3
  *
  * ESP32-S3 with a PCM5122 I2C-controlled DAC feeding a TPA3118 amplifier.
- * Unlike the CONFIG_DAC_ENABLE_GPIO family (loud-esp32/board.c), the DAC
- * itself is not silent I2S-only hardware — it has real I2C power/volume/gain
- * control, handled by the dac_pcm5122 driver. The TPA3118 downstream of it
- * still has its own separate active-high UNMUTE pin with no I2C of its own,
- * so this board drives both: dac_set_power_mode() reaches the PCM5122 over
- * I2C, and BOARD_DAC_ENABLE_GPIO is toggled here directly from playback
- * events, the same way loud-esp32 drives its amp enable pin.
+ * Uses the shared dac_pcm51xx driver (also used by Sonocotta HiFi-ESP32-Plus
+ * / Amped-ESP32-Plus): it owns the DAC's I2C register control (power,
+ * volume, mute) and drives CONFIG_DAC_ENABLE_GPIO high only while playing,
+ * so this board does not touch that pin itself — see dac_pcm51xx.h.
  */
 
 #include "iot_board.h"
 
 #include "dac.h"
-#include "dac_pcm5122.h"
+#include "dac_pcm51xx.h"
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "esp_check.h"
@@ -39,7 +36,6 @@ static bool s_spi_bus_initialized = false;
 static void on_playback_event(playback_source_t source, playback_event_t event,
                               const playback_event_data_t *data,
                               void *user_data);
-static esp_err_t init_amp_enable_gpio(void);
 static void i2c_bus_recover(int sda_gpio, int scl_gpio);
 
 const char *iot_board_get_info(void) {
@@ -74,11 +70,6 @@ esp_err_t iot_board_init(void) {
     return ESP_OK;
   }
 
-  esp_err_t err = init_amp_enable_gpio();
-  if (err != ESP_OK) {
-    return err;
-  }
-
   // The PCM5122 has no reset pin wired on this board, so it stays powered
   // (and can stay mid-transaction) across an MCU-only reset — a crash
   // recovery, OTA reboot, or `pio run -t upload`. If that leaves it holding
@@ -94,7 +85,7 @@ esp_err_t iot_board_init(void) {
       .glitch_ignore_cnt = 7,
       .flags.enable_internal_pullup = true,
   };
-  err = i2c_new_master_bus(&i2c_cfg, &s_i2c_bus_handle);
+  esp_err_t err = i2c_new_master_bus(&i2c_cfg, &s_i2c_bus_handle);
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "Failed to initialize I2C bus: %s", esp_err_to_name(err));
     return err;
@@ -102,7 +93,7 @@ esp_err_t iot_board_init(void) {
   ESP_LOGI(TAG, "I2C bus %d initialized: sda=%d, scl=%d", BOARD_I2C_PORT,
            BOARD_I2C_SDA_GPIO, BOARD_I2C_SCL_GPIO);
 
-  dac_register(&dac_pcm5122_ops);
+  dac_register(&dac_pcm51xx_ops);
   err = dac_init(s_i2c_bus_handle);
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "Failed to initialize DAC: %s", esp_err_to_name(err));
@@ -130,7 +121,8 @@ esp_err_t iot_board_init(void) {
 
   playback_events_register(on_playback_event, NULL);
 
-  // Start powered down; the amp only unmutes while actually playing.
+  // Start powered down; the DAC (and its enable pin) only come up while
+  // actually playing.
   dac_set_power_mode(DAC_POWER_OFF);
 
   s_board_initialized = true;
@@ -146,9 +138,6 @@ esp_err_t iot_board_deinit(void) {
   playback_events_unregister(on_playback_event);
 
   dac_set_power_mode(DAC_POWER_OFF);
-#if BOARD_DAC_ENABLE_GPIO >= 0
-  gpio_set_level(BOARD_DAC_ENABLE_GPIO, 0);
-#endif
   dac_deinit();
 
   if (s_i2c_bus_handle != NULL) {
@@ -211,26 +200,6 @@ static void i2c_bus_recover(int sda_gpio, int scl_gpio) {
            gpio_get_level(sda_gpio) ? "released" : "still stuck low");
 }
 
-static esp_err_t init_amp_enable_gpio(void) {
-#if BOARD_DAC_ENABLE_GPIO >= 0
-  gpio_config_t io_conf = {
-      .pin_bit_mask = (1ULL << BOARD_DAC_ENABLE_GPIO),
-      .mode = GPIO_MODE_OUTPUT,
-      .pull_up_en = GPIO_PULLUP_DISABLE,
-      .pull_down_en = GPIO_PULLDOWN_DISABLE,
-      .intr_type = GPIO_INTR_DISABLE,
-  };
-  esp_err_t err = gpio_config(&io_conf);
-  ESP_RETURN_ON_ERROR(err, TAG, "Failed to configure amp enable GPIO");
-
-  // Start muted — the amp only unmutes while actually playing.
-  gpio_set_level(BOARD_DAC_ENABLE_GPIO, 0);
-  ESP_LOGI(TAG, "Amp enable GPIO %d initialized (muted)",
-           BOARD_DAC_ENABLE_GPIO);
-#endif
-  return ESP_OK;
-}
-
 static void on_playback_event(playback_source_t source, playback_event_t event,
                               const playback_event_data_t *data,
                               void *user_data) {
@@ -242,21 +211,12 @@ static void on_playback_event(playback_source_t source, playback_event_t event,
   case PLAYBACK_EVENT_CONNECTED:
   case PLAYBACK_EVENT_PAUSED:
     dac_set_power_mode(DAC_POWER_STANDBY);
-#if BOARD_DAC_ENABLE_GPIO >= 0
-    gpio_set_level(BOARD_DAC_ENABLE_GPIO, 0);
-#endif
     break;
   case PLAYBACK_EVENT_PLAYING:
     dac_set_power_mode(DAC_POWER_ON);
-#if BOARD_DAC_ENABLE_GPIO >= 0
-    gpio_set_level(BOARD_DAC_ENABLE_GPIO, 1);
-#endif
     break;
   case PLAYBACK_EVENT_DISCONNECTED:
     dac_set_power_mode(DAC_POWER_OFF);
-#if BOARD_DAC_ENABLE_GPIO >= 0
-    gpio_set_level(BOARD_DAC_ENABLE_GPIO, 0);
-#endif
     break;
   case PLAYBACK_EVENT_METADATA:
     break;

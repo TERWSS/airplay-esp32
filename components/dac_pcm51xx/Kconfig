@@ -18,4 +18,12 @@ if DAC_PCM51XX
             7-bit I2C address selected by the ADR1/ADR2 straps.
             Sonocotta HiFi-ESP32-Plus and Amped-ESP32-Plus use 0x4D.
 
+    config PCM51XX_ANALOG_GAIN_MINUS_6DB
+        bool "Use -6 dB analog gain (1V RMS output)"
+        default n
+        help
+            The PCM512x analog output stage can run at 0 dB (2V RMS, the
+            chip's default) or -6 dB (1V RMS). Enable this to match a
+            board designed around the lower, 1V RMS output level.
+
 endif # DAC_PCM51XX
