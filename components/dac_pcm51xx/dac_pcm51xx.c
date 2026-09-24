@@ -38,6 +38,10 @@
 #define PCM51XX_REG_CLK_STATUS  0x5E // read-only clock detection flags
 #define PCM51XX_REG_POWER_STATE 0x76 // read-only power state
 
+// Page 1 registers
+#define PCM51XX_PAGE_ANALOG     0x01
+#define PCM51XX_REG_ANALOG_GAIN 0x02 // bit4 LAGN, bit0 RAGN: 0dB or -6dB
+
 #define PCM51XX_RESET_ALL 0x11 // RSTM modules + RSTR registers, auto-clearing
 #define PCM51XX_POWER_ACTIVE  0x00
 #define PCM51XX_POWER_STANDBY 0x10
@@ -46,6 +50,19 @@
 #define PCM51XX_PLL_REF_BCK   0x10
 #define PCM51XX_IGNORE_MCLK   0x08 // IDCH: ignore SCK halt detection
 #define PCM51XX_ROUTE_STEREO  0x11
+
+// Analog Gain Control (P1-R2): LAGN/RAGN select 0 dB or -6 dB analog gain.
+// 0 dB (2V RMS) is the chip's power-on-reset default.
+#define PCM51XX_ANALOG_GAIN_LAGN (1 << 4)
+#define PCM51XX_ANALOG_GAIN_RAGN (1 << 0)
+#if CONFIG_PCM51XX_ANALOG_GAIN_MINUS_6DB
+#define PCM51XX_ANALOG_GAIN_VAL \
+  (PCM51XX_ANALOG_GAIN_LAGN | PCM51XX_ANALOG_GAIN_RAGN)
+#define PCM51XX_ANALOG_GAIN_IS_MINUS_6DB 1
+#else
+#define PCM51XX_ANALOG_GAIN_VAL          0x00
+#define PCM51XX_ANALOG_GAIN_IS_MINUS_6DB 0
+#endif
 
 // P0-R61/R62: 0x30 is 0 dB, each step is 0.5 dB, 0xFE is -103 dB, 0xFF mutes.
 #define PCM51XX_VOL_0DB_CODE 0x30
@@ -152,6 +169,18 @@ static esp_err_t configure_locked(void) {
                       "Clock setup failed");
   ESP_RETURN_ON_ERROR(wr(PCM51XX_REG_DAC_ROUTING, PCM51XX_ROUTE_STEREO), TAG,
                       "Routing failed");
+
+  // Analog gain: 0 dB (2V RMS) or -6 dB (1V RMS), per Kconfig. Lives on
+  // page 1; select page 0 again immediately after so every register access
+  // below (and every runtime set_volume()/set_power_mode() call, neither of
+  // which re-selects a page itself) keeps operating on page 0 as they
+  // assume.
+  ESP_RETURN_ON_ERROR(wr(PCM51XX_REG_PAGE, PCM51XX_PAGE_ANALOG), TAG,
+                      "Select page failed");
+  ESP_RETURN_ON_ERROR(wr(PCM51XX_REG_ANALOG_GAIN, PCM51XX_ANALOG_GAIN_VAL), TAG,
+                      "Analog gain failed");
+  ESP_RETURN_ON_ERROR(wr(PCM51XX_REG_PAGE, 0x00), TAG, "Select page failed");
+
   ESP_RETURN_ON_ERROR(apply_volume_locked(), TAG, "Volume setup failed");
   return wr(PCM51XX_REG_POWER, PCM51XX_POWER_ACTIVE);
 }
@@ -225,7 +254,8 @@ static esp_err_t pcm51xx_init(void *i2c_bus) {
              esp_err_to_name(err));
     goto fail;
   }
-  ESP_LOGI(TAG, "PCM512x detected @0x%02X", addr);
+  ESP_LOGI(TAG, "PCM512x detected @0x%02X (analog gain %s)", addr,
+           PCM51XX_ANALOG_GAIN_IS_MINUS_6DB ? "-6 dB" : "0 dB");
 
   err = configure_locked();
   if (err != ESP_OK) {
