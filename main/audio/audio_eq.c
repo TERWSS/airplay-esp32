@@ -47,6 +47,11 @@ static const uint32_t k_cached_rates[] = {44100, 48000};
 #define GAIN_GLIDE 0.00390625f /* 1/256 per frame */
 #define GAIN_SNAP  1e-5f
 
+/* Filter state below this, in 16-bit LSB, can no longer move the rounded
+ * output. On silent input it is cleared, and a chain whose state is all
+ * clear is at rest: silence in is silence out, with nothing to compute. */
+#define REST_LEVEL 1e-3f
+
 /* Stored chains. The header lets a build with different limits refuse the
  * file rather than read it crooked. */
 typedef struct {
@@ -139,6 +144,7 @@ static eq_config_t s_live;
 static float s_ic1[AUDIO_EQ_CHANNELS][AUDIO_EQ_SLOTS];
 static float s_ic2[AUDIO_EQ_CHANNELS][AUDIO_EQ_SLOTS];
 static float s_gain[AUDIO_EQ_CHANNELS] = {1.0f, 1.0f};
+static bool s_resting;
 
 /* ---------- design ---------- */
 
@@ -513,6 +519,7 @@ static void adopt(const eq_config_t *next) {
     }
   }
   memcpy(&s_live, next, sizeof(s_live));
+  s_resting = false;
   if (!s_primed) {
     /* Nothing has played through the old gains yet. */
     for (int ch = 0; ch < AUDIO_EQ_CHANNELS; ch++) {
@@ -520,6 +527,15 @@ static void adopt(const eq_config_t *next) {
     }
     s_primed = true;
   }
+}
+
+static bool is_silent(const int16_t *buf, size_t frames) {
+  for (size_t i = 0; i < frames * 2; i++) {
+    if (buf[i] != 0) {
+      return false;
+    }
+  }
+  return true;
 }
 
 void audio_eq_process(int16_t *buf, size_t frames) {
@@ -530,6 +546,14 @@ void audio_eq_process(int16_t *buf, size_t frames) {
   if (!s_live.active && s_gain[0] == 1.0f && s_gain[1] == 1.0f) {
     return; /* flat, and done gliding: bit-exact passthrough */
   }
+  /* Sources keep writing silence while idle; once the tails have died away
+   * there is nothing left to filter. */
+  const bool silent = is_silent(buf, frames);
+  if (silent && s_resting && s_gain[0] == s_live.in_gain[0] &&
+      s_gain[1] == s_live.in_gain[1]) {
+    return;
+  }
+  bool resting = silent;
 
   for (int ch = 0; ch < AUDIO_EQ_CHANNELS; ch++) {
     const int stages = s_live.stages[ch];
@@ -559,16 +583,20 @@ void audio_eq_process(int16_t *buf, size_t frames) {
     }
     s_gain[ch] = gain;
 
-    /* Decaying tails in silence would otherwise sink into denormals. */
+    /* Decaying tails would otherwise sink into denormals, and in silence
+     * are cleared as soon as they stop mattering. */
+    const float clear_below = silent ? REST_LEVEL : 1e-15f;
     for (int s = 0; s < stages; s++) {
-      if (fabsf(ic1[s]) < 1e-15f) {
+      if (fabsf(ic1[s]) < clear_below) {
         ic1[s] = 0.0f;
       }
-      if (fabsf(ic2[s]) < 1e-15f) {
+      if (fabsf(ic2[s]) < clear_below) {
         ic2[s] = 0.0f;
       }
+      resting = resting && ic1[s] == 0.0f && ic2[s] == 0.0f;
     }
   }
+  s_resting = resting;
 }
 
 bool audio_eq_get_chain(int ch, tas58xx_bq_t out[AUDIO_EQ_SLOTS]) {

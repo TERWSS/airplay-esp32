@@ -232,12 +232,10 @@ static void process_pcm(int16_t *buf, size_t frames, int32_t volume_q15) {
 
 static void playback_task(void *arg) {
   int16_t *pcm = malloc((size_t)(FRAME_SAMPLES + 1) * 2 * sizeof(int16_t));
-  int16_t *silence = calloc((size_t)FRAME_SAMPLES * 2, sizeof(int16_t));
   int16_t *resample_buf = malloc(MAX_RESAMPLE_FRAMES * 2 * sizeof(int16_t));
-  if (!pcm || !silence || !resample_buf) {
+  if (!pcm || !resample_buf) {
     ESP_LOGE(TAG, "Failed to allocate buffers");
     free(pcm);
-    free(silence);
     playback_task_handle = NULL;
     free(resample_buf);
     vTaskDelete(NULL);
@@ -288,8 +286,13 @@ static void playback_task(void *arg) {
       // Receiver underflow — output a frame of silence.  Block on the DMA
       // write (portMAX_DELAY) so the write itself paces the loop, instead of a
       // short timeout plus vTaskDelay(1) which produced jittery silence.
-      led_audio_feed(silence, FRAME_SAMPLES);
-      if (i2s_channel_write(tx_handle, silence,
+      // Through the same processing, like the USB and Bluetooth underruns, so
+      // EQ tails and volume ramps carry on rather than freeze until the next
+      // audio arrives.
+      memset(pcm, 0, (size_t)FRAME_SAMPLES * 2 * sizeof(int16_t));
+      process_pcm(pcm, FRAME_SAMPLES, airplay_get_volume_q15());
+      led_audio_feed(pcm, FRAME_SAMPLES);
+      if (i2s_channel_write(tx_handle, pcm,
                             (size_t)FRAME_SAMPLES * 2 * sizeof(int16_t),
                             &written, portMAX_DELAY) == ESP_OK) {
         __atomic_add_fetch(&output_submitted_frames,
@@ -300,7 +303,6 @@ static void playback_task(void *arg) {
   }
 
   free(pcm);
-  free(silence);
   playback_task_handle = NULL;
   vTaskDelete(NULL);
 }
