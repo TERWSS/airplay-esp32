@@ -38,6 +38,7 @@
 #endif
 
 #include <inttypes.h>
+#include <math.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
@@ -100,6 +101,21 @@ static _Atomic int32_t s_pending_mute = -1;
 static float s_unmuted_db = -15.0f;
 // Latched mute state, owned by the sink task.
 static bool s_muted;
+// Host volume as a software gain, for DACs that cannot attenuate themselves
+// (audio_output_write_pcm ignores it on those that can). Owned by the sink
+// task.
+static int32_t s_volume_q15 = 32768;
+
+// The bottom of the host's slider means silence, not just VOLUME_MIN_DB.
+static int32_t volume_q15(bool muted, float db) {
+  if (muted || db <= VOLUME_MIN_DB) {
+    return 0;
+  }
+  if (db >= 0.0f) {
+    return 32768;
+  }
+  return (int32_t)(32768.0f * powf(10.0f, db / 20.0f));
+}
 
 // ============================================================================
 // UAC callbacks
@@ -166,6 +182,7 @@ static void apply_host_controls(void) {
   // update s_unmuted_db without lifting the mute.
   if (mute >= 0 || volume >= 0) {
     dac_set_volume(s_muted ? VOLUME_MIN_DB : s_unmuted_db);
+    s_volume_q15 = volume_q15(s_muted, s_unmuted_db);
   }
 }
 
@@ -249,7 +266,7 @@ static void usb_sink_task(void *arg) {
     void *data =
         xRingbufferReceiveUpTo(s_ringbuf, &item_size, pdMS_TO_TICKS(20), 512);
     if (data != NULL) {
-      audio_output_write(data, item_size, portMAX_DELAY);
+      audio_output_write_pcm(data, item_size, s_volume_q15, portMAX_DELAY);
       vRingbufferReturnItem(s_ringbuf, data);
       continue;
     }
@@ -269,8 +286,11 @@ static void usb_sink_task(void *arg) {
     }
 
     // Short gap between USB packets — keep I2S fed rather than underrun.
+    // Through the same processing, so a volume ramp carries on rather than
+    // stopping dead.
     s_underruns++;
-    audio_output_write(silence, sizeof(silence), pdMS_TO_TICKS(10));
+    audio_output_write_pcm(silence, sizeof(silence), s_volume_q15,
+                           pdMS_TO_TICKS(10));
   }
 }
 
@@ -284,6 +304,7 @@ esp_err_t usb_audio_sink_init(usb_audio_sink_state_cb_t state_cb) {
   }
 
   (void)settings_get_volume(&s_unmuted_db);
+  s_volume_q15 = volume_q15(false, s_unmuted_db);
 
   s_state_cb = state_cb;
   s_last_rx_us = esp_timer_get_time();
