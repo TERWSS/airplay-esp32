@@ -2,7 +2,7 @@
 
 Boards with a USB OTG port can present themselves to an attached computer as a **stereo USB
 speaker**. Audio sent by the host plays through the same output path AirPlay uses, sharing
-the DAC's DSP, EQ and volume control.
+its channel mode, EQ and volume control.
 
 !!! warning "Needs USB OTG and a device-role port"
 

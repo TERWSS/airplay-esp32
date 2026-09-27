@@ -39,8 +39,13 @@
 #include "dac_tas58xx.h"
 #endif
 
-/* The /bq page and API run on the TAS58xx DSP. */
-#ifdef CONFIG_DAC_TAS58XX
+#ifdef CONFIG_SOFTWARE_EQ
+#include "audio_eq.h"
+#endif
+
+/* The /bq page and API run on the TAS58xx DSP or, for plain DACs, in
+ * software. */
+#if defined(CONFIG_DAC_TAS58XX) || defined(CONFIG_SOFTWARE_EQ)
 #define HAS_BQ_API 1
 #endif
 
@@ -2049,15 +2054,17 @@ static esp_err_t hf_flow_post_handler(httpd_req_t *req) {
 #endif /* CONFIG_DAC_TAS57XX */
 
 /* ================================================================== */
-/*  Biquad chains  (only when TAS58xx DAC is configured)               */
+/*  Biquad chains  (TAS58xx DSP, or the software EQ on plain DACs)     */
 /* ================================================================== */
 
 #ifdef HAS_BQ_API
 
 /* ---------- Parametric biquad chains ---------- */
 
-/* These wrappers are the whole of what the handlers need from the DSP, so
- * the JSON side does not depend on the TAS58xx driver directly. */
+/* The /bq page drives either the TAS58xx DSP or, on plain DACs, the software
+ * EQ. These wrappers are the whole of what the handlers need from either, so
+ * the JSON side is shared. */
+#ifdef CONFIG_DAC_TAS58XX
 
 #define EQB_CHANNELS    TAS58XX_BQ_CHANNELS
 #define EQB_SLOTS       TAS58XX_BQ_SLOTS
@@ -2141,6 +2148,103 @@ static void eqb_set_mix(int dev, int mix) {
   }
   settings_set_amp_mix(saved);
 }
+/* The DSP's filters have headroom of their own; nothing is turned down. */
+static bool eqb_preamp_db(float *db) {
+  (void)db;
+  return false;
+}
+
+#else /* CONFIG_SOFTWARE_EQ */
+
+#define EQB_CHANNELS    AUDIO_EQ_CHANNELS
+#define EQB_SLOTS       AUDIO_EQ_SLOTS
+#define EQB_GAIN_MIN_DB AUDIO_EQ_TRIM_MIN_DB
+#define EQB_GAIN_MAX_DB AUDIO_EQ_TRIM_MAX_DB
+#define EQB_MIX_COUNT   4
+
+/* The page's input routings, in its order, as output channel modes: the
+ * software path already has that mixer, so both controls share it. */
+static const audio_channel_mode_t eqb_mix_modes[EQB_MIX_COUNT] = {
+    AUDIO_CHANNEL_STEREO,
+    AUDIO_CHANNEL_MONO,
+    AUDIO_CHANNEL_LEFT,
+    AUDIO_CHANNEL_RIGHT,
+};
+
+static int eqb_devices(void) {
+  return 1;
+}
+static const char *eqb_role(int dev) {
+  (void)dev;
+  return "stereo";
+}
+static bool eqb_pbtl(int dev) {
+  (void)dev;
+  return false;
+}
+static uint32_t eqb_rate(void) {
+  return audio_eq_get_rate();
+}
+static bool eqb_get_ganged(int dev) {
+  (void)dev;
+  return audio_eq_get_ganged();
+}
+static void eqb_set_ganged(int dev, bool ganged) {
+  (void)dev;
+  audio_eq_set_ganged(ganged);
+}
+static bool eqb_get_chain(int dev, int ch, tas58xx_bq_t out[EQB_SLOTS]) {
+  (void)dev;
+  return audio_eq_get_chain(ch, out);
+}
+static esp_err_t eqb_set_chain(int dev, int ch,
+                               const tas58xx_bq_t in[EQB_SLOTS]) {
+  (void)dev;
+  return audio_eq_set_chain(ch, in);
+}
+static esp_err_t eqb_commit(void) {
+  return audio_eq_commit();
+}
+static esp_err_t eqb_revert(void) {
+  return audio_eq_revert();
+}
+static float eqb_get_gain(int dev, int ch) {
+  (void)dev;
+  return audio_eq_get_trim_db(ch);
+}
+static void eqb_set_gain(int dev, int ch, float db) {
+  (void)dev;
+  audio_eq_set_trim_db(ch, db);
+}
+static bool eqb_get_mute(int dev, int ch) {
+  (void)dev;
+  return audio_eq_get_mute(ch);
+}
+static void eqb_set_mute(int dev, int ch, bool mute) {
+  (void)dev;
+  audio_eq_set_mute(ch, mute);
+}
+static int eqb_get_mix(int dev) {
+  (void)dev;
+  audio_channel_mode_t mode = audio_output_get_channel_mode();
+  for (int m = 0; m < EQB_MIX_COUNT; m++) {
+    if (eqb_mix_modes[m] == mode) {
+      return m;
+    }
+  }
+  return 0;
+}
+static void eqb_set_mix(int dev, int mix) {
+  (void)dev;
+  audio_output_set_channel_mode(eqb_mix_modes[mix]);
+}
+/* What the software EQ takes off ahead of the filters to fit the boosts. */
+static bool eqb_preamp_db(float *db) {
+  *db = audio_eq_get_preamp_db();
+  return true;
+}
+
+#endif /* CONFIG_DAC_TAS58XX */
 
 /* Enough for 15 filters worth of JSON with room for whitespace. */
 #define BQ_POST_MAX 6144
@@ -2246,6 +2350,10 @@ static esp_err_t bq_get_handler(httpd_req_t *req) {
   cJSON_AddNumberToObject(json, "rate", eqb_rate());
   cJSON_AddNumberToObject(json, "gain_min", EQB_GAIN_MIN_DB);
   cJSON_AddNumberToObject(json, "gain_max", EQB_GAIN_MAX_DB);
+  float preamp_db;
+  if (eqb_preamp_db(&preamp_db)) {
+    cJSON_AddNumberToObject(json, "preamp_db", preamp_db);
+  }
 
   cJSON *amps = cJSON_AddArrayToObject(json, "amps");
   for (int d = 0; d < devices; d++) {
@@ -2392,8 +2500,15 @@ static esp_err_t bq_post_handler(httpd_req_t *req) {
   }
 
   cJSON_Delete(json);
+  /* The preamp follows every change, so hand it back for the page to show. */
+  char resp[48] = "{\"success\":true}";
+  float preamp_db;
+  if (eqb_preamp_db(&preamp_db)) {
+    snprintf(resp, sizeof(resp), "{\"success\":true,\"preamp_db\":%.1f}",
+             (double)preamp_db);
+  }
   httpd_resp_set_type(req, "application/json");
-  httpd_resp_sendstr(req, "{\"success\":true}");
+  httpd_resp_sendstr(req, resp);
   return ESP_OK;
 }
 

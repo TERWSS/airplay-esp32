@@ -25,6 +25,9 @@
 #ifdef CONFIG_DAC_TAS57XX
 #include "dac_tas57xx.h"
 #endif
+#ifdef CONFIG_SOFTWARE_EQ
+#include "audio_eq.h"
+#endif
 
 // SIDE NOTE; providing power from GPIO pins is capped ~20mA.
 #if CONFIG_I2S_GND_IO >= 0
@@ -217,9 +220,13 @@ static void apply_channel_mode(int16_t *buf, size_t frames) {
   }
 }
 
-// Everything a source's PCM goes through on its way to I2S.
+// Everything a source's PCM goes through on its way to I2S. The EQ runs
+// ahead of the volume so its filters see full-resolution samples.
 static void process_pcm(int16_t *buf, size_t frames, int32_t volume_q15) {
   apply_channel_mode(buf, frames);
+#ifdef CONFIG_SOFTWARE_EQ
+  audio_eq_process(buf, frames);
+#endif
   apply_volume(buf, frames * 2, volume_q15);
 }
 
@@ -480,6 +487,10 @@ void audio_output_set_sample_rate(uint32_t rate) {
   i2s_std_clk_config_t clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(rate);
   i2s_channel_reconfig_std_clock(tx_handle, &clk_cfg);
   s_output_rate = rate;
+#ifdef CONFIG_SOFTWARE_EQ
+  // Corners are relative to the clock, so follow it.
+  audio_eq_set_rate(rate);
+#endif
   output_cursor_reset();
   i2s_channel_enable(tx_handle);
   dac_on_i2s_started(rate);

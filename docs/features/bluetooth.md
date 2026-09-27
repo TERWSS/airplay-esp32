@@ -24,7 +24,7 @@ Bluetooth builds are separate environments rather than being enabled everywhere.
 - The phone's volume is applied on the DAC where it has a volume control, and otherwise
   in software, where the bottom of the phone's slider is silence
 - Bluetooth volume is saved to NVS and restored on reconnect
-- Audio goes through the same channel mode as AirPlay
+- Audio goes through the same channel mode and [software EQ](software-eq.md) as AirPlay
 
 The [coexistence state diagram](../reference/architecture.md#runtime-coexistence-rules)
 shows how the two protocols hand off to each other.

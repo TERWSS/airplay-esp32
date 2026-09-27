@@ -187,8 +187,8 @@ static void bt_i2s_writer_task(void *arg) {
     size_t item_size = 0;
     void *data =
         xRingbufferReceiveUpTo(s_ringbuf, &item_size, pdMS_TO_TICKS(20), 512);
-    // Through the same processing as AirPlay: channel mode and software
-    // volume.
+    // Through the same processing as AirPlay: channel mode, software EQ and
+    // software volume.
     int32_t volume_q15 = atomic_load(&s_volume_q15);
     if (data != NULL && item_size > 0) {
       audio_output_write_pcm(data, item_size, volume_q15, portMAX_DELAY);

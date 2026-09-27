@@ -286,8 +286,8 @@ static void usb_sink_task(void *arg) {
     }
 
     // Short gap between USB packets — keep I2S fed rather than underrun.
-    // Through the same processing, so a volume ramp carries on rather than
-    // stopping dead.
+    // Through the same processing, so filter tails and volume ramps carry on
+    // rather than stop dead.
     s_underruns++;
     audio_output_write_pcm(silence, sizeof(silence), s_volume_q15,
                            pdMS_TO_TICKS(10));

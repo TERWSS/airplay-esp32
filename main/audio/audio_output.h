@@ -73,7 +73,7 @@ esp_err_t audio_output_write(const void *data, size_t bytes, TickType_t wait);
 
 /**
  * Write PCM through the same processing AirPlay gets (channel mode, software
- * volume) before it reaches I2S. For the USB and Bluetooth
+ * EQ, software volume) before it reaches I2S. For the USB and Bluetooth
  * sinks, which run while the AirPlay playback task is idle.
  *
  * Partial frames are carried over to the next call, so @p bytes need not be
