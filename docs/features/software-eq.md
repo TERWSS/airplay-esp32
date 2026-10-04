@@ -56,6 +56,20 @@ builder and measurement fit. What differs:
 Committed chains are stored in `/spiffs/eq/sw_eq.cfg`. Levels and mutes are saved to NVS
 as soon as they change, independently of the commit, as on the TAS58xx.
 
+## 32-bit output
+
+On the I2S line each sample is normally a 16-bit word, so the EQ's output is rounded back
+to 16 bits and the software volume rounds it again. A DAC or amplifier that takes 32-bit
+words, such as the MAX98357A (which picks the word length from the bit clock), can be
+sent those instead: turn on **Send 32-bit words over I2S** (`CONFIG_I2S_32BIT_OUTPUT=y`).
+The EQ then hands its output over in floating point, the volume is applied at full
+precision, and the only rounding left is into the 32-bit word. A boost that runs past
+full scale is no longer clipped ahead of the volume either, only where it is still past
+full scale after it.
+
+It costs about 16 KB more internal RAM: the DMA ring doubles, and the words need buffers
+of their own.
+
 ## Cost
 
 Measured on an ESP32-S3 at 240 MHz, with 48 kHz audio:

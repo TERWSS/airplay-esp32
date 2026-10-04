@@ -538,20 +538,27 @@ static bool is_silent(const int16_t *buf, size_t frames) {
   return true;
 }
 
-void audio_eq_process(int16_t *buf, size_t frames) {
+/* Both entry points: filter @p in into @p out16, rounded and clipped (it may
+ * be @p in itself), or with @p as_float into @p outf as computed. Inlined
+ * into each, so the choice is made at compile time rather than per sample.
+ * Returns false, having written nothing, when the input would come out
+ * unchanged. */
+static inline __attribute__((always_inline)) bool
+run(const int16_t *in, int16_t *out16, float *outf, bool as_float,
+    size_t frames) {
   if (atomic_load_explicit(&s_tb_mid, memory_order_relaxed) & TB_FRESH) {
     s_tb_front = atomic_exchange(&s_tb_mid, s_tb_front) & TB_INDEX;
     adopt(&s_model->tb[s_tb_front]);
   }
   if (!s_live.active && s_gain[0] == 1.0f && s_gain[1] == 1.0f) {
-    return; /* flat, and done gliding: bit-exact passthrough */
+    return false; /* flat, and done gliding: bit-exact passthrough */
   }
   /* Sources keep writing silence while idle; once the tails have died away
    * there is nothing left to filter. */
-  const bool silent = is_silent(buf, frames);
+  const bool silent = is_silent(in, frames);
   if (silent && s_resting && s_gain[0] == s_live.in_gain[0] &&
       s_gain[1] == s_live.in_gain[1]) {
-    return;
+    return false;
   }
   bool resting = silent;
 
@@ -570,7 +577,7 @@ void audio_eq_process(int16_t *buf, size_t frames) {
           gain = target;
         }
       }
-      float x = (float)buf[i * 2 + ch] * gain;
+      float x = (float)in[i * 2 + ch] * gain;
       for (int s = 0; s < stages; s++) {
         float v3 = x - ic2[s];
         float v1 = f[s].a1 * ic1[s] + f[s].a2 * v3;
@@ -579,7 +586,11 @@ void audio_eq_process(int16_t *buf, size_t frames) {
         ic2[s] = 2.0f * v2 - ic2[s];
         x = f[s].m0 * x + f[s].m1 * v1 + f[s].m2 * v2;
       }
-      buf[i * 2 + ch] = to_int16(x);
+      if (as_float) {
+        outf[i * 2 + ch] = x;
+      } else {
+        out16[i * 2 + ch] = to_int16(x);
+      }
     }
     s_gain[ch] = gain;
 
@@ -597,6 +608,15 @@ void audio_eq_process(int16_t *buf, size_t frames) {
     }
   }
   s_resting = resting;
+  return true;
+}
+
+void audio_eq_process(int16_t *buf, size_t frames) {
+  (void)run(buf, buf, NULL, false, frames);
+}
+
+bool audio_eq_process_float(const int16_t *in, float *out, size_t frames) {
+  return run(in, NULL, out, true, frames);
 }
 
 bool audio_eq_get_chain(int ch, tas58xx_bq_t out[AUDIO_EQ_SLOTS]) {

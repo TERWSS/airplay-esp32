@@ -258,6 +258,71 @@ static void check_against_reference(const char *name,
         (unsigned)rate);
 }
 
+/* audio_eq_process_float() is the same filter handed over before rounding:
+ * it rounds to exactly what audio_eq_process() writes, runs past full scale
+ * where that one clips, and declines a chain that would change nothing. */
+static void test_float_output(void) {
+  printf("float output rounds to the int16 output, unclipped\n");
+  static float outf[MAX_FRAMES * 2];
+  const uint32_t rate = 44100;
+  const size_t frames = SECONDS(rate, 1);
+
+  reset(rate);
+  signal_mix(frames, rate, 3);
+  CHECK(!audio_eq_process_float(s_in, outf, BLOCK), "flat chain filtered");
+
+  /* A hard-clipped bass under a +12 dB shelf. The preamp holds every sine at
+   * or below full scale, but this square-ish wave comes out over it. */
+  for (size_t i = 0; i < frames; i++) {
+    double v = 2.0 * sin(2 * M_PI * 50 * (double)i / rate);
+    int16_t x = v >= 1.0    ? 32767
+                : v <= -1.0 ? -32768
+                            : (int16_t)lrint(v * 32767);
+    s_in[2 * i] = x;
+    s_in[2 * i + 1] = x;
+  }
+  tas58xx_bq_t chain[AUDIO_EQ_SLOTS];
+  chain_flat(chain);
+  chain[0].type = TAS58XX_BQ_BASS_SHELF;
+  chain[0].freq_hz = 85.0f;
+  chain[0].gain_db = 12.0f;
+  static int16_t silence[24000 * 2];
+
+  /* Both runs start from the same state, with the preamp's glide run out. */
+  reset(rate);
+  CHECK(audio_eq_set_chain(0, chain) == ESP_OK, "shelf rejected");
+  process(silence, 24000);
+  memcpy(s_out, s_in, frames * 4);
+  process(s_out, frames);
+
+  reset(rate);
+  audio_eq_set_chain(0, chain);
+  process(silence, 24000);
+  bool filtered = true;
+  for (size_t i = 0; i < frames; i += BLOCK) {
+    size_t n = frames - i < BLOCK ? frames - i : BLOCK;
+    filtered =
+        audio_eq_process_float(s_in + 2 * i, outf + 2 * i, n) && filtered;
+  }
+
+  long differ = 0;
+  float peak = 0.0f;
+  for (size_t i = 0; i < frames * 2; i++) {
+    float v = outf[i];
+    /* audio_eq.c's to_int16() */
+    int16_t r = v >= 32767.0f    ? 32767
+                : v <= -32768.0f ? -32768
+                                 : (int16_t)((int32_t)(v + 32768.5f) - 32768);
+    differ += r != s_out[i];
+    peak = fmaxf(peak, fabsf(v));
+  }
+  printf("  %ld of %zu samples round differently, float peak %+.2f dBFS\n",
+         differ, frames * 2, 20 * log10(peak / 32768.0));
+  CHECK(filtered, "float path declined an active chain");
+  CHECK(differ == 0, "float output rounds differently");
+  CHECK(peak > 32768.0f, "float output clipped");
+}
+
 static void test_matches_reference(void) {
   printf("every filter type matches a double-precision reference\n");
   static const char *names[TAS58XX_BQ_TYPE_COUNT] = {
@@ -601,6 +666,7 @@ int main(void) {
   CHECK(audio_eq_init() == ESP_OK, "init failed");
   test_flat_is_bit_exact();
   test_matches_reference();
+  test_float_output();
   test_preamp_covers_peak();
   test_rate_follows_clock();
   test_edits_keep_state();

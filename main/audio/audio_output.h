@@ -64,7 +64,8 @@ void audio_output_stop(void);
  * Can be used by any audio source (BT A2DP, etc.) when the AirPlay
  * playback task is stopped.
  *
- * @param data   PCM data buffer (interleaved stereo, 16-bit)
+ * @param data   PCM data buffer (interleaved stereo, in I2S words: 16-bit,
+ *               or 32-bit with CONFIG_I2S_32BIT_OUTPUT)
  * @param bytes  Number of bytes to write
  * @param wait   Maximum ticks to wait for I2S DMA space
  * @return ESP_OK on success

@@ -50,6 +50,15 @@ uint32_t audio_eq_get_rate(void);
  */
 void audio_eq_process(int16_t *buf, size_t frames);
 
+/**
+ * The same filtering, for output wider than 16 bits: @p in is filtered into
+ * @p out on the int16 scale (32768.0 is full scale), neither rounded nor
+ * clipped, so a gain applied afterwards loses nothing. Returns false, with
+ * @p out untouched, wherever audio_eq_process() would leave its buffer as it
+ * was: @p in is then the output as it stands.
+ */
+bool audio_eq_process_float(const int16_t *in, float *out, size_t frames);
+
 bool audio_eq_get_chain(int ch, tas58xx_bq_t out[AUDIO_EQ_SLOTS]);
 /** Rejects the whole chain if any section is invalid or unstable. */
 esp_err_t audio_eq_set_chain(int ch, const tas58xx_bq_t in[AUDIO_EQ_SLOTS]);
