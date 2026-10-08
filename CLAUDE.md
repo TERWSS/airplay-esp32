@@ -149,6 +149,7 @@ components/
 ├── dac_tas57xx/            # TI TAS57xx (TAS5756/5754/5751) DAC driver with hybrid flow DSP
 ├── dac_tas58xx/            # TI TAS58xx (TAS5825M/TAS5805M) driver with on-chip DSP + biquad chains
 ├── dac_es8311/             # Everest ES8311 codec driver
+├── husb238a/               # HUSB238A USB-PD trigger: asks a USB-C charger for up to 20 V
 ├── display/                # Display drivers
 │   ├── display.c           # Common display API
 │   ├── display_st7789.c    # ST7789 TFT with LVGL 9 rendering (ESP32-S3)
@@ -193,6 +194,7 @@ components/
 - **A TAS5805M has no process flow.** PPC3 dumps are skipped for it (`tas58xx_load_hf()` returns early unless the model is a TAS5825M) and the input mixer refuses anything but stereo: `dac_tas58xx_can_route()` is false, `dac_tas58xx_set_mix()` returns `ESP_ERR_NOT_SUPPORTED`, init drops a stored routing, and `/api/bq` reports the amp as `mix_fixed` so the page greys the control out. Volume, mute and the 15 biquads per channel work on both parts, so the `/bq` web UI is the tuning route for a 5805M.
 - **PPC3 dump filenames**, searched most specific first: `tas5825m_fw<i>-<rate>.bin` → `tas5825m_fw-<rate>.bin` → `tas5825m_fw<i>.bin` → `tas5825m_fw.bin`. The unindexed names only stand in for device 0. `components/dac_tas58xx/ppc3_convert.py` produces them from a PPC3 export.
 - **Fault handling.** A clock fault is expected when the I2S clock stops at the end of a track, so it is logged and cleared rather than muting the amplifier; channel and global2 faults still mute. Rev D has no fault line at all and is polled instead.
+- **Full volume follows a negotiated supply.** The gain does not change with PVDD: at 0 dB analog gain, 0 dBFS is 29.5 V peak, and the output clips at about 93 % of PVDD. `dac_tas58xx_set_supply_mv()` raises full volume from `CONFIG_TAS58XX_MAX_VOLUME` to the loudest level that clears the supply, never lower. Only the HUSB238A USB-PD trigger calls it (`CONFIG_HUSB238A`, the 55 mm Louder-ESP32-Mini). The board code probes for the trigger at 0x42 on the DAC's bus before `dac_init()`, so a board without it is untouched. The trigger forgets on power loss and is asked again on every boot, and only for the fixed 5–20 V offers, never EPR.
 
 ## Code Quality
 
@@ -222,7 +224,7 @@ scripts/lint.sh            # Run clang-tidy on all C/H files
 scripts/lint.sh --fix      # Attempt to auto-fix clang-tidy issues
 ```
 
-**No unit tests**: This is embedded firmware — no test framework is in place. Manual testing on hardware is required.
+**Host tests**: `tests/pcm51xx/run.py` and `tests/husb238a/run.py` compile the real driver and USB-PD trigger code against small mocks with the host C compiler, and run in CI's `format-check` job. There is no test framework beyond that; everything else needs testing on hardware.
 
 ## Documentation site
 

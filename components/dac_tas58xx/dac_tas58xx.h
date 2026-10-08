@@ -84,6 +84,15 @@ void dac_tas58xx_set_second_pbtl(bool pbtl);
 bool dac_tas58xx_is_pbtl(int dev);
 
 /**
+ * Tell the driver the amplifiers' supply, as a USB-PD trigger negotiated it.
+ * The gain does not change with the supply; only the point where the output
+ * clips does. So full volume is raised to the loudest level that clears this
+ * supply, though never below CONFIG_TAS58XX_MAX_VOLUME. Safe before
+ * dac_init(); afterwards the new level applies at once.
+ */
+void dac_tas58xx_set_supply_mv(int supply_mv);
+
+/**
  * Whether an amplifier can route its inputs at all. Routing is a process-flow
  * change, which only a TAS5825M has: a TAS5805M plays the pair as it comes.
  */

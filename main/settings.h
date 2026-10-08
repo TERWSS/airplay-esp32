@@ -300,3 +300,17 @@ esp_err_t settings_get_second_pbtl(bool *pbtl);
  * Save whether the second amplifier is bridged (PBTL) mono.
  */
 esp_err_t settings_set_second_pbtl(bool pbtl);
+
+// ---- USB-PD supply ----
+
+/**
+ * Get the voltage to ask a USB-PD charger for.
+ * @param volts Output: one of 5, 9, 12, 15 or 20
+ * @return ESP_OK if found, error otherwise
+ */
+esp_err_t settings_get_usb_pd_volts(int *volts);
+
+/**
+ * Save the voltage to ask a USB-PD charger for.
+ */
+esp_err_t settings_set_usb_pd_volts(int volts);

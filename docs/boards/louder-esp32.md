@@ -62,6 +62,37 @@ the pair into it here. So the board starts with the output channel set to **Mono
 For a stereo pair of speakers, set one board to Left and the other to Right on the
 settings page.
 
+### USB-C power on the 55 mm board
+
+The 55 mm board adds a Hynetek HUSB238A USB-PD trigger, so a USB-C charger can feed the
+amplifier more than the 5 V every port gives. The trigger asks for nothing until the
+firmware tells it to, and it forgets on every power loss, so the board asks again on every
+boot, before the amplifier comes up. The 42 mm board has no trigger; the same build runs
+both.
+
+Choose the voltage under **USB-C Power** on the settings page. It starts at 5 V, so no
+speaker gets more than it was set up for, and the choice is kept across restarts. The
+amplifier's gain does not change with its supply, only how far it can swing before it
+clips, so full volume is raised to use the headroom:
+
+| Supply | Full volume | Most it delivers, 4 Ω / 8 Ω |
+| --- | --- | --- |
+| 5 V | −10 dB | about 3 / 1.5 W |
+| 9 V | −10 dB | about 9 / 4.5 W |
+| 12 V | −8.5 dB | about 15 / 8 W |
+| 15 V | −7 dB | about 22 / 11 W |
+| 20 V | −4.5 dB | about 39 / 19 W |
+
+Choose what your speaker can take. 20 V needs a 65 W charger; a 30 W one manages 15 V. A
+charger that does not offer the voltage you chose gets the highest one below it, and a
+supply without USB-PD, such as a computer's port, stays at 5 V.
+
+!!! note "Never more than 20 V"
+
+    The board's supply capacitors are rated for 25 V and the TAS5805M for 26.4 V. The
+    trigger can negotiate up to 48 V from an EPR charger, but the firmware only ever asks
+    for the fixed 5–20 V offers, and never above `CONFIG_HUSB238A_MAX_VOLTS`.
+
 ## Features
 
 - TAS5825M or TAS5805M with on-chip DSP and a 15-band parametric EQ (25 Hz – 16 kHz)

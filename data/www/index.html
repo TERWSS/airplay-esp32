@@ -106,6 +106,12 @@ input:focus{outline:none;border-color:#e94560}
 <option value='0'>Stereo (BTL)</option>
 </select></div>
 <div id='dual-msg'></div></div>
+<div id='pd-group' style='display:none;margin-top:18px'>
+<div class='form-group'><label for='pd-volts'>USB-C Power</label>
+<select id='pd-volts' onchange='savePd()'></select></div>
+<div id='pd-now' style='font-size:12px;opacity:0.7;margin-top:-8px;margin-bottom:6px'></div>
+<div style='font-size:12px;opacity:0.7;margin-bottom:6px'>A higher voltage lets the speaker play louder before it distorts: at full volume about 3, 9, 15, 22 or 39 W into 4&nbsp;&Omega; at 5, 9, 12, 15 or 20 V, and half that into 8&nbsp;&Omega;. 20 V needs a 65 W charger. Choose what your speaker can take.</div>
+<div id='pd-msg'></div></div>
 <div id='eq-link' style='display:none;margin-top:18px'>
 <a href='/bq' class='btn btn-secondary'>Biquad EQ</a></div>
 <div id='hf1-link' style='display:none;margin-top:18px'>
@@ -181,6 +187,8 @@ var pbtlLoaded=false;
 var dualDevices=1;
 var dualPbtl=true;
 var dualLoaded=false;
+var pdLoaded=false;
+var pdVolts=0;
 var airplayV1=false;
 var sendspinEnabled=false;
 var sendspinLoaded=false;
@@ -256,6 +264,37 @@ async function saveDual(){
     if(d.success){dualPbtl=pbtl;msg('dual-msg','Saved! Rewire the speakers, then restart to apply.','ok');}
     else{sel.value=dualPbtl?'1':'0';msg('dual-msg',d.error,'err');}}
   catch(e){sel.value=dualPbtl?'1':'0';msg('dual-msg','Error','err');console.error('saveDual failed',e);}}
+function showPd(d){
+  var sel=document.getElementById('pd-volts');
+  var offered={};
+  (d.offers||[]).forEach(function(o){offered[o.volts]=o.ma;});
+  sel.innerHTML='';
+  (d.choices||[]).forEach(function(v){var o=document.createElement('option');
+    o.value=String(v);o.textContent=v+' V'+(d.pd&&!offered[v]?' (not offered)':'');
+    sel.appendChild(o);});
+  sel.value=String(d.volts);pdVolts=d.volts;
+  var now=d.supply_mv>0?'Running at '+d.supply_mv/1000+' V':'Supply unknown';
+  if(d.pd){now+='. The charger offers '+d.offers.map(function(o){
+    return o.volts+' V at '+(o.ma/1000).toFixed(1)+' A';}).join(', ')+'.';}
+  else if(d.attached){now+='. The charger does not speak USB-PD, so the board stays at 5 V.';}
+  document.getElementById('pd-now').textContent=now;}
+async function loadPd(){
+  try{var r=await fetch('/api/power/usb-pd');if(!r.ok)return;var d=await r.json();
+    document.getElementById('pd-group').style.display='';showPd(d);}
+  catch(e){console.warn('Could not load the USB-C power',e);}}
+async function savePd(){
+  var sel=document.getElementById('pd-volts');
+  var v=Number.parseInt(sel.value,10);
+  sel.disabled=true;
+  msg('pd-msg','Asking the charger for '+v+' V...','ok');
+  try{var r=await fetch('/api/power/usb-pd',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({volts:v})});
+    if(!r.ok){sel.value=String(pdVolts);msg('pd-msg',await r.text(),'err');return;}
+    var d=await r.json();showPd(d);
+    if(d.supply_mv===v*1000){msg('pd-msg','Saved. The board now runs at '+v+' V.','ok');}
+    else if(d.supply_mv>0){msg('pd-msg','Saved, but this charger gave '+d.supply_mv/1000+' V. One that offers '+v+' V will get it.','err');}
+    else{msg('pd-msg','Saved, but the supply could not be read.','err');}}
+  catch(e){sel.value=String(pdVolts);msg('pd-msg','Error','err');console.error('savePd failed',e);}
+  finally{sel.disabled=false;}}
 async function loadAirplayMode(){
   try{var r=await fetch('/api/airplay/mode');if(!r.ok)return;var d=await r.json();
     if(d.success){airplayV1=!!d.v1;
@@ -324,6 +363,8 @@ async function loadInfo(){
          asking anyway logs a warning on the device for every page load. */
       if(i.dual_supported){if(!pbtlLoaded){pbtlLoaded=true;loadPbtl();}
         if(!dualLoaded){dualLoaded=true;loadDual();}}
+      /* Only a board whose USB-PD trigger answered serves the USB-C power. */
+      if(i.usb_pd_supported&&!pdLoaded){pdLoaded=true;loadPd();}
       /* Only a Sendspin build registers /api/sendspin/mode. */
       if(i.sendspin_supported){document.getElementById('sendspin-group').style.display='';
         if(!sendspinLoaded){sendspinLoaded=true;loadSendspin();}

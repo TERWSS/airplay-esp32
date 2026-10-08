@@ -293,6 +293,11 @@ static bool s_forced_first_pbtl = CONFIG_TAS58XX_FORCE_PBTL;
 /* Cached master AirPlay volume so a level change can be re-applied alone. */
 static float s_last_airplay_db = -15.0f;
 
+/* DAC level for AirPlay full volume: CONFIG_TAS58XX_MAX_VOLUME, raised when a
+ * negotiated supply leaves the output room to swing further before it clips
+ * (dac_tas58xx_set_supply_mv). */
+static float s_max_volume_db = (float)CONFIG_TAS58XX_MAX_VOLUME;
+
 /* Per-output level trim (dB) and mute, folded into the input mixer gains. */
 static float s_ch_gain_db[TAS58XX_MAX_DEVICES][TAS58XX_BQ_CHANNELS];
 static bool s_ch_mute[TAS58XX_MAX_DEVICES][TAS58XX_BQ_CHANNELS];
@@ -1612,10 +1617,10 @@ static float tas58xx_map_volume_db(float volume_airplay_db) {
   }
 
   // Volume mapping (2:1 scaling):
-  //   AirPlay 0 dB    -> DAC CONFIG_TAS58XX_MAX_VOLUME
+  //   AirPlay 0 dB    -> DAC s_max_volume_db (CONFIG_TAS58XX_MAX_VOLUME)
   //   AirPlay -25 dB  -> DAC (MAX - 50)
   //   AirPlay -30..-25 dB -> steep roll-off to mute
-  float max_db = (float)CONFIG_TAS58XX_MAX_VOLUME;
+  float max_db = s_max_volume_db;
   float db_level;
 
   if (volume_airplay_db >= -25.0f) {
@@ -1674,6 +1679,35 @@ static void tas58xx_apply_volume_locked(void) {
     tas58xx_write_reg(REG_DIG_VOL, tas58xx_dig_vol_reg(&s_devs[i]));
   }
   s_cur = NULL;
+}
+
+/* At 0 dB analog gain, full scale drives the output to 29.5 V peak (the
+ * datasheet's AGAIN table), and the output clips at its supply less what the
+ * output stage drops: about 7 % into a 4 ohm load. */
+#define FULL_SCALE_PEAK_V 29.5f
+#define SWING_PER_SUPPLY  0.93f
+
+void dac_tas58xx_set_supply_mv(int supply_mv) {
+  float max_db = (float)CONFIG_TAS58XX_MAX_VOLUME;
+  if (supply_mv > 0) {
+    /* The loudest level that still clears the supply, in the register's
+     * 0.5 dB steps. Never below the configured level: a supply that low
+     * already clipped before there was anything to negotiate. */
+    float clean_db = 20.0f * log10f(SWING_PER_SUPPLY * (float)supply_mv /
+                                    1000.0f / FULL_SCALE_PEAK_V);
+    clean_db = floorf(clean_db * 2.0f) / 2.0f;
+    max_db = fmaxf(max_db, fminf(clean_db, 0.0f));
+  }
+  if (max_db == s_max_volume_db) {
+    return;
+  }
+  s_max_volume_db = max_db;
+  ESP_LOGI(TAG, "Supply %d mV: full volume now %.1f dB", supply_mv, max_db);
+  if (s_reg_mutex != NULL) {
+    REG_LOCK();
+    tas58xx_apply_volume_locked();
+    REG_UNLOCK();
+  }
 }
 
 static void tas58xx_set_volume(float volume_airplay_db) {
