@@ -84,13 +84,22 @@ void dac_tas58xx_set_second_pbtl(bool pbtl);
 bool dac_tas58xx_is_pbtl(int dev);
 
 /**
- * Tell the driver the amplifiers' supply, as a USB-PD trigger negotiated it.
- * The gain does not change with the supply; only the point where the output
- * clips does. So full volume is raised to the loudest level that clears this
- * supply, though never below CONFIG_TAS58XX_MAX_VOLUME. Safe before
- * dac_init(); afterwards the new level applies at once.
+ * The digital gain at which full volume is as loud as @p supply_mv lets the
+ * output swing before it clips, in 0.5 dB steps. The gain does not change
+ * with the supply, only the point where the output clips does.
  */
-void dac_tas58xx_set_supply_mv(int supply_mv);
+float dac_tas58xx_clean_db(int supply_mv);
+
+/** Quietest digital gain dac_tas58xx_set_full_volume_db() takes. */
+#define TAS58XX_FULL_VOLUME_MIN_DB (-30.0f)
+
+/**
+ * Set the digital gain AirPlay's full volume maps to, in dB, rounded to
+ * 0.5 dB and held to TAS58XX_FULL_VOLUME_MIN_DB..0. Until set it is
+ * CONFIG_TAS58XX_MAX_VOLUME. Safe before dac_init().
+ */
+void dac_tas58xx_set_full_volume_db(float db);
+float dac_tas58xx_get_full_volume_db(void);
 
 /**
  * Whether an amplifier can route its inputs at all. Routing is a process-flow

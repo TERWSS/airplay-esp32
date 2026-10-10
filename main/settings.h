@@ -301,6 +301,17 @@ esp_err_t settings_get_second_pbtl(bool *pbtl);
  */
 esp_err_t settings_set_second_pbtl(bool pbtl);
 
+// ---- Digital gain ----
+
+/**
+ * Get the digital gain AirPlay's full volume maps to, in dB.
+ * @return ESP_OK if one is stored
+ */
+esp_err_t settings_get_full_volume_db(float *db);
+
+/** Save the digital gain in dB (-60..0, kept to 0.5 dB). */
+esp_err_t settings_set_full_volume_db(float db);
+
 // ---- USB-PD supply ----
 
 /**

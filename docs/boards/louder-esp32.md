@@ -71,21 +71,34 @@ boot, before the amplifier comes up. The 42 mm board has no trigger; the same bu
 both.
 
 Choose the voltage under **USB-C Power** on the settings page. It starts at 5 V, so no
-speaker gets more than it was set up for, and the choice is kept across restarts. The
-amplifier's gain does not change with its supply, only how far it can swing before it
-clips, so full volume is raised to use the headroom:
+speaker gets more than it was set up for, and the choice is kept across restarts. Choose
+what your speaker can take. 20 V needs a 65 W charger; a 30 W one manages 15 V. A charger
+that does not offer the voltage you chose gets the highest one below it, and a supply
+without USB-PD, such as a computer's port, stays at 5 V.
 
-| Supply | Full volume | Most it delivers, 4 Ω / 8 Ω |
+The amplifier's gain does not change with its supply, only how far it can swing before it
+clips. So after changing the voltage, set **Digital gain** to match. That is the level full
+volume plays at, and the page marks the recommended level for each supply, the loudest
+that stays clean on it:
+
+| Supply | Digital gain | Most it delivers, 4 Ω / 8 Ω |
 | --- | --- | --- |
-| 5 V | −10 dB | about 3 / 1.5 W |
-| 9 V | −10 dB | about 9 / 4.5 W |
+| 5 V | −16.5 dB | about 3 / 1.5 W |
+| 9 V | −11 dB | about 9 / 4.5 W |
 | 12 V | −8.5 dB | about 15 / 8 W |
 | 15 V | −7 dB | about 22 / 11 W |
 | 20 V | −4.5 dB | about 39 / 19 W |
 
-Choose what your speaker can take. 20 V needs a 65 W charger; a 30 W one manages 15 V. A
-charger that does not offer the voltage you chose gets the highest one below it, and a
-supply without USB-PD, such as a computer's port, stays at 5 V.
+The digital gain starts at −16.5 dB, the 5 V level, which is right for the 42 mm board.
+It is set by hand rather than following the supply, so it also suits a board that cannot
+read its supply, such as a 55 mm one whose trigger has been strapped to a fixed voltage in
+hardware. A louder setting clips the loudest passages; at low frequencies that is often
+hard to hear.
+
+An EQ boost needs room above that level too: the recommended gain leaves none, so a
++9 dB boost clips at full volume unless the digital gain comes down by 9 dB. The EQ page
+says when the filters boost past what the supply carries, and what to set the digital
+gain to.
 
 !!! note "Never more than 20 V"
 

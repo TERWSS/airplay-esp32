@@ -890,6 +890,59 @@ static esp_err_t dual_mode_post_handler(httpd_req_t *req) {
   cJSON_Delete(response);
   return ESP_OK;
 }
+
+/* The digital gain AirPlay's full volume maps to, chosen to suit the supply.
+ * The level that is clean on each fixed USB-PD voltage comes along as a
+ * recommendation. */
+static esp_err_t send_digital_gain(httpd_req_t *req) {
+  static const int volts[] = {5, 9, 12, 15, 20};
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddBoolToObject(json, "success", true);
+  cJSON_AddNumberToObject(json, "db", dac_tas58xx_get_full_volume_db());
+  cJSON_AddNumberToObject(json, "min_db", TAS58XX_FULL_VOLUME_MIN_DB);
+  cJSON *rec = cJSON_AddArrayToObject(json, "recommended");
+  for (size_t i = 0; i < sizeof volts / sizeof volts[0]; i++) {
+    cJSON *r = cJSON_CreateObject();
+    cJSON_AddNumberToObject(r, "volts", volts[i]);
+    cJSON_AddNumberToObject(r, "db", dac_tas58xx_clean_db(volts[i] * 1000));
+    cJSON_AddItemToArray(rec, r);
+  }
+  char *json_str = cJSON_Print(json);
+  httpd_resp_set_type(req, "application/json");
+  httpd_resp_send(req, json_str, HTTPD_RESP_USE_STRLEN);
+  free(json_str);
+  cJSON_Delete(json);
+  return ESP_OK;
+}
+
+static esp_err_t digital_gain_get_handler(httpd_req_t *req) {
+  return send_digital_gain(req);
+}
+
+/* {"db": -11} sets the digital gain. */
+static esp_err_t digital_gain_post_handler(httpd_req_t *req) {
+  char *content = recv_body(req, 64);
+  if (!content) {
+    httpd_resp_send_500(req);
+    return ESP_FAIL;
+  }
+  cJSON *json = cJSON_Parse(content);
+  free(content);
+  const cJSON *db = json ? cJSON_GetObjectItem(json, "db") : NULL;
+  if (db == NULL || !cJSON_IsNumber(db) || db->valuedouble > 0.0 ||
+      db->valuedouble < TAS58XX_FULL_VOLUME_MIN_DB) {
+    cJSON_Delete(json);
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                        "Expected {\"db\": -30..0}");
+    return ESP_FAIL;
+  }
+  const float gain_db = (float)db->valuedouble;
+  cJSON_Delete(json);
+
+  dac_tas58xx_set_full_volume_db(gain_db);
+  settings_set_full_volume_db(dac_tas58xx_get_full_volume_db());
+  return send_digital_gain(req);
+}
 #endif /* CONFIG_DAC_TAS58XX */
 
 #ifdef CONFIG_HUSB238A
@@ -2487,8 +2540,8 @@ esp_err_t web_server_start(uint16_t port) {
   config.max_uri_handlers += 2; // per-channel level get/post
 #endif
 #ifdef CONFIG_DAC_TAS58XX
-  // primary + dual DAC wiring plus the biquad page/API
-  config.max_uri_handlers += 9;
+  // primary + dual DAC wiring, digital gain, plus the biquad page/API
+  config.max_uri_handlers += 11;
 #endif
 #ifdef CONFIG_HUSB238A
   config.max_uri_handlers += 2; // USB-PD supply get/post
@@ -2634,6 +2687,16 @@ esp_err_t web_server_start(uint16_t port) {
                                     .method = HTTP_POST,
                                     .handler = dual_mode_post_handler};
   httpd_register_uri_handler(s_server, &dual_mode_post_uri);
+
+  httpd_uri_t digital_gain_get_uri = {.uri = "/api/audio/digital-gain",
+                                      .method = HTTP_GET,
+                                      .handler = digital_gain_get_handler};
+  httpd_register_uri_handler(s_server, &digital_gain_get_uri);
+
+  httpd_uri_t digital_gain_post_uri = {.uri = "/api/audio/digital-gain",
+                                       .method = HTTP_POST,
+                                       .handler = digital_gain_post_handler};
+  httpd_register_uri_handler(s_server, &digital_gain_post_uri);
 #endif
 
 #ifdef CONFIG_HUSB238A
