@@ -621,6 +621,7 @@ esp_err_t audio_output_write_pcm(const void *data, size_t bytes,
     }
 
     const void *words = process_pcm(stage, frames, volume_q15, &out);
+    feed_led(words, frames);
     size_t written = 0;
     err = i2s_channel_write(tx_handle, words, frames * OUT_FRAME_BYTES,
                             &written, wait);

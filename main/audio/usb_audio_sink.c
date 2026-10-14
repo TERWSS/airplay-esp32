@@ -22,7 +22,6 @@
 
 #include "audio_output.h"
 #include "dac.h"
-#include "led.h"
 #include "playback_events.h"
 #include "settings.h"
 
@@ -144,7 +143,6 @@ static esp_err_t uac_output_cb(uint8_t *buf, size_t len, void *cb_ctx) {
 
   s_last_rx_us = esp_timer_get_time();
   atomic_fetch_add(&s_rx_bytes, (uint32_t)len);
-  led_audio_feed((const int16_t *)buf, len / BYTES_PER_FRAME);
 
   if (xRingbufferSend(ringbuf, buf, len, 0) != pdTRUE) {
     // Either the sink task is still handing I2S over from AirPlay, or the
