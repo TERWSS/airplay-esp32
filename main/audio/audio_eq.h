@@ -59,6 +59,14 @@ void audio_eq_process(int16_t *buf, size_t frames);
  */
 bool audio_eq_process_float(const int16_t *in, float *out, size_t frames);
 
+/**
+ * Start the next audio from rest. A source that stops mid-stream leaves its
+ * filter tails in the sections, and the next source to write would play
+ * them. Safe from any task: the writer clears its state before its next
+ * block.
+ */
+void audio_eq_reset(void);
+
 bool audio_eq_get_chain(int ch, tas58xx_bq_t out[AUDIO_EQ_SLOTS]);
 /** Rejects the whole chain if any section is invalid or unstable. */
 esp_err_t audio_eq_set_chain(int ch, const tas58xx_bq_t in[AUDIO_EQ_SLOTS]);

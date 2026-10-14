@@ -631,6 +631,50 @@ static void test_silence_rests(void) {
   CHECK(emax < 3.0, "resumed %.1f LSB off a fresh start", emax);
 }
 
+/* A source that stops mid-stream never rings its tails out. Without a reset
+ * the next source plays them; with one it starts as from rest. */
+static double resume_error(const tas58xx_bq_t chain[AUDIO_EQ_SLOTS],
+                           uint32_t rate, bool reset_first) {
+  const size_t tone = SECONDS(rate, 0.5);
+  signal_sine(tone, rate, 61.0, 12000.0);
+  process(s_in, tone);
+  if (reset_first) {
+    audio_eq_reset();
+  }
+
+  const size_t frames = SECONDS(rate, 0.5);
+  signal_mix(frames, rate, 5);
+  memcpy(s_out, s_in, frames * 4);
+  process(s_out, frames);
+  double pre = pow(10.0, audio_eq_get_preamp_db() / 20.0);
+  ref_t r;
+  ref_init(&r, chain, rate);
+  double emax = 0;
+  for (size_t i = 0; i < frames; i++) {
+    double y = clip16(ref_step(&r, s_in[2 * i] * pre));
+    emax = fmax(emax, fabs(s_out[2 * i] - y));
+  }
+  return emax;
+}
+
+static void test_reset_after_stop(void) {
+  printf("a reset after a mid-stream stop starts the next audio from rest\n");
+  const uint32_t rate = 48000;
+  tas58xx_bq_t chain[AUDIO_EQ_SLOTS];
+  chain_flat(chain);
+  chain[0] = highpass(30.0f);
+  chain[1] = peak(60.0f, 4.0f, 9.0f);
+  reset(rate);
+  audio_eq_set_chain(0, chain);
+
+  double without = resume_error(chain, rate, false);
+  double with = resume_error(chain, rate, true);
+  printf("  next audio %.0f LSB off a fresh start without a reset, %.2f with\n",
+         without, with);
+  CHECK(without > 100.0, "no tail carried over (%.1f LSB)", without);
+  CHECK(with < 3.0, "after a reset, %.1f LSB off a fresh start", with);
+}
+
 static void test_ganged_and_rejects(void) {
   printf("unganged chains are independent; unstable custom is rejected\n");
   tas58xx_bq_t chain[AUDIO_EQ_SLOTS], flat[AUDIO_EQ_SLOTS];
@@ -672,6 +716,7 @@ int main(void) {
   test_edits_keep_state();
   test_levels_glide();
   test_silence_rests();
+  test_reset_after_stop();
   test_ganged_and_rejects();
   if (failures) {
     printf("%d check(s) failed\n", failures);

@@ -146,6 +146,9 @@ static float s_ic2[AUDIO_EQ_CHANNELS][AUDIO_EQ_SLOTS];
 static float s_gain[AUDIO_EQ_CHANNELS] = {1.0f, 1.0f};
 static bool s_resting;
 
+/* Set by audio_eq_reset() from any task; the writer clears its own state. */
+static atomic_bool s_reset_req;
+
 /* ---------- design ---------- */
 
 static biquad_t design_biquad(const tas58xx_bq_t *bq, double fs) {
@@ -550,6 +553,12 @@ run(const int16_t *in, int16_t *out16, float *outf, bool as_float,
     s_tb_front = atomic_exchange(&s_tb_mid, s_tb_front) & TB_INDEX;
     adopt(&s_model->tb[s_tb_front]);
   }
+  if (atomic_load_explicit(&s_reset_req, memory_order_relaxed) &&
+      atomic_exchange(&s_reset_req, false)) {
+    memset(s_ic1, 0, sizeof(s_ic1));
+    memset(s_ic2, 0, sizeof(s_ic2));
+    s_resting = true;
+  }
   if (!s_live.active && s_gain[0] == 1.0f && s_gain[1] == 1.0f) {
     return false; /* flat, and done gliding: bit-exact passthrough */
   }
@@ -609,6 +618,10 @@ run(const int16_t *in, int16_t *out16, float *outf, bool as_float,
   }
   s_resting = resting;
   return true;
+}
+
+void audio_eq_reset(void) {
+  atomic_store(&s_reset_req, true);
 }
 
 void audio_eq_process(int16_t *buf, size_t frames) {
