@@ -26,6 +26,7 @@ Volume is done in the amplifier (`CONFIG_DAC_CONTROLS_VOLUME`) rather than in so
 | `louder-esp32-plus-bt` | ESP32 | TAS5825M | yes | yes |
 | `louder-esp32-s3` | ESP32-S3 | TAS5805M | — | yes |
 | `louder-esp32-s3-plus` | ESP32-S3 | TAS5825M | — | yes |
+| `louder-esp32-s3-mini` | ESP32-S3 | TAS5805M, bridged | — | — |
 
 Bluetooth Classic exists only on the original ESP32, so neither S3 board has a `-bt`
 build. On an ESP32 the published binary is the Bluetooth one.
@@ -36,6 +37,30 @@ build. On an ESP32 the published binary is the Bluetooth one.
     amplifier family on Sonocotta's Esparagus form factor and has its own environments
     (`esparagus-louder`, `-bt`, `-s3`). Its ESP32 build differs from `louder-esp32` in
     pinout: it has a FAULTZ line and an RGB LED, and no `PDN` pin.
+
+## Louder-ESP32-Mini
+
+The [Louder-ESP32-Mini](https://sonocotta.com/louder-esp32-mini/) sits on the back of a
+single passive speaker. It carries an ESP32-S3 with 8 MB of flash and 8 MB of PSRAM and a
+TAS5805M, and a USB-C port that both powers the amplifier and flashes the board. It uses
+the Louder-ESP32-S3's pins, without the Ethernet or the display. Sonocotta's
+configurations for the 42 mm and 55 mm boards share the pins and the output wiring.
+
+Its amplifier is **bridged (PBTL)**: the board ties each channel's two half-bridges
+together, so all four drive the one speaker. That is wiring, not a setting, so the board
+has a build of its own. `louder-esp32-s3-mini` sets `CONFIG_TAS58XX_FORCE_PBTL`, which
+brings the amplifier up bridged before its outputs ever switch, and locks the settings
+page's Primary Amplifier choice to bridged.
+
+!!! danger "Only flash the Mini's own build"
+
+    Every other Louder build starts the amplifier as a stereo pair, which drives the tied
+    half-bridges against each other, and lets the settings page choose stereo.
+
+A bridged TAS5805M plays the left I2S channel, and the TAS5805M has no input mixer to sum
+the pair into it here. So the board starts with the output channel set to **Mono (L+R)**.
+For a stereo pair of speakers, set one board to Left and the other to Right on the
+settings page.
 
 ## Features
 
