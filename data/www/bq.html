@@ -200,6 +200,7 @@ that instead of correcting the band the driver does cover.</p>
 <div class='trim' id='mix-row'>
 <label for='mix'>Input channels</label>
 <select id='mix' onchange='mixChanged()'></select></div>
+<p class='hint' id='mix-hint' style='display:none;margin:-6px 0 14px'></p>
 <label class='gang' id='gang-row'>
 <input type='checkbox' id='gang' onchange='gangChanged()'>
 <span>Gang outputs A and B</span></label>
@@ -976,11 +977,21 @@ function chainLabel(a){
 function drawMix(){
   var a=data.amps[amp],sel=$('mix'),h='';
   for(var m=0;m<MIXES.length;m++){
-    if(a.pbtl&&m===0)continue; /* one driver cannot carry a stereo pair */
+    /* An amplifier that cannot route lists only the routing it plays. One
+       that is bridged drives a single speaker, so it lists stereo only while
+       it is set to it. */
+    if(a.mix_fixed?m!==a.mix:a.pbtl&&m===0&&a.mix!==0)continue;
     h+="<option value='"+m+"'>"+MIXES[m]+'</option>';
   }
   sel.innerHTML=h;
   sel.value=String(a.mix);
+  sel.disabled=!!a.mix_fixed;
+  $('mix-hint').style.display=a.mix_fixed?'':'none';
+  $('mix-hint').textContent=!a.mix_fixed?'':a.pbtl
+    ?'This amplifier cannot route its inputs. Bridged, it plays the left '+
+     'channel, so Output Channel on the main page decides what it hears.'
+    :'This amplifier cannot route its inputs, so it plays the pair as it '+
+     'comes.';
 }
 function mixChanged(){
   data.amps[amp].mix=Number.parseInt($('mix').value,10);
@@ -1311,6 +1322,14 @@ function xoLayouts(){
     L.push({n:'Satellites on '+ampLabel(0)+', subwoofer on '+ampLabel(1),
             parts:[{a:0,o:-1,hi:1},{a:1,o:-1,hi:0}],gang:1,mix:[0,1],ok:1});
   }
+  /* An arrangement that needs a routing an amplifier cannot take is out. */
+  L.forEach(function(l){
+    for(var i=0;l.ok&&l.mix&&i<l.mix.length&&i<data.amps.length;i++)
+      if(data.amps[i].mix_fixed&&l.mix[i]!==data.amps[i].mix){
+        l.ok=0;
+        l.why=ampLabel(i)+' cannot route its inputs, which this needs.';
+      }
+  });
   return L;
 }
 function xoPick(){

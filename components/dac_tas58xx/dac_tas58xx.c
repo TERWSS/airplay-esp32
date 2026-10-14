@@ -787,8 +787,11 @@ static esp_err_t tas58xx_apply_pbtl(tas58xx_dev_t *dev) {
    * mono (summed) and prevent stereo. Left/right selection should be allowed
    * and remembered.
    */
-  if (dev->mix == TAS58XX_MIX_STEREO) {
-    /* Stereo is not valid in PBTL mode - default to mono (summed) */
+  if (dev->mix == TAS58XX_MIX_STEREO &&
+      dac_tas58xx_can_route((int)(dev - s_devs))) {
+    /* Stereo is not valid in PBTL mode - default to mono (summed). A
+     * TAS5805M cannot route, so it keeps the pair and plays the left
+     * channel; the output channel mode decides what that carries. */
     ESP_LOGW(TAG,
              "@0x%02X PBTL mode active - stereo selected, defaulting to mono",
              dev->addr);
@@ -1293,12 +1296,22 @@ static esp_err_t tas58xx_init(void *i2c_bus) {
   /* A bridged amplifier drives one output, so summing L+R into it is the only
    * sensible default; everything else passes the pair straight through. A
    * stereo routing stored before the amplifier was bridged is meaningless now,
-   * so it falls back to the sum as well. */
+   * so it falls back to the sum as well. A TAS5805M cannot route at all (see
+   * tas58xx_apply_input_mix()), so it keeps the pair whatever was stored: a
+   * routing it cannot play would only cost it the output trims and mutes.
+   * Bridged, it plays the left I2S channel, and the output channel mode
+   * decides what that carries. */
   for (int i = 0; i < s_dev_count; i++) {
-    s_devs[i].mix = s_dev_mix_cfg[i]      ? s_dev_mix[i]
-                    : s_devs[i].pbtl_mono ? TAS58XX_MIX_MONO
-                                          : TAS58XX_MIX_STEREO;
-    if (s_devs[i].pbtl_mono && s_devs[i].mix == TAS58XX_MIX_STEREO) {
+    const bool routes = dac_tas58xx_can_route(i);
+    const bool sum = s_devs[i].pbtl_mono && routes;
+    s_devs[i].mix = s_dev_mix_cfg[i] ? s_dev_mix[i]
+                    : sum            ? TAS58XX_MIX_MONO
+                                     : TAS58XX_MIX_STEREO;
+    if (!routes && s_devs[i].mix != TAS58XX_MIX_STEREO) {
+      ESP_LOGI(TAG, "Amp %d cannot route its inputs; stored routing %d dropped",
+               i, (int)s_devs[i].mix);
+      s_devs[i].mix = TAS58XX_MIX_STEREO;
+    } else if (sum && s_devs[i].mix == TAS58XX_MIX_STEREO) {
       s_devs[i].mix = TAS58XX_MIX_MONO;
     }
     s_dev_mix[i] = s_devs[i].mix;
@@ -1778,6 +1791,13 @@ bool dac_tas58xx_is_pbtl(int dev) {
   return s_devs[dev].pbtl_mono;
 }
 
+bool dac_tas58xx_can_route(int dev) {
+  if (dev < 0 || dev >= s_dev_count) {
+    return false;
+  }
+  return s_devs[dev].model == TAS58XX_MODEL_TAS5825M;
+}
+
 bool dac_tas58xx_is_first_pbtl_forced(void) {
   return s_forced_first_pbtl;
 }
@@ -1788,9 +1808,19 @@ esp_err_t dac_tas58xx_set_mix(int dev, tas58xx_mix_t mix) {
     return ESP_ERR_INVALID_ARG;
   }
 
+  /* Refused rather than stored, which would only cost the amplifier its trims
+   * and mutes. Before init the part is not known; tas58xx_init() drops such a
+   * routing instead. */
+  if (dev < s_dev_count && mix != TAS58XX_MIX_STEREO &&
+      !dac_tas58xx_can_route(dev)) {
+    return ESP_ERR_NOT_SUPPORTED;
+  }
+
   /* In PBTL mode, stereo is not valid. If stereo is requested, default to mono.
+   * An amplifier that cannot route keeps the pair and plays its left channel.
    */
-  if (dev < s_dev_count && s_devs[dev].pbtl_mono && mix == TAS58XX_MIX_STEREO) {
+  if (dev < s_dev_count && s_devs[dev].pbtl_mono && mix == TAS58XX_MIX_STEREO &&
+      dac_tas58xx_can_route(dev)) {
     ESP_LOGW(TAG,
              "Amp %d is in PBTL mode - stereo selected, defaulting to mono",
              dev);

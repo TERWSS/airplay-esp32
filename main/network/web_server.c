@@ -2173,6 +2173,8 @@ static esp_err_t bq_get_handler(httpd_req_t *req) {
     cJSON_AddBoolToObject(amp, "ganged", dac_tas58xx_bq_get_ganged(d));
     cJSON_AddNumberToObject(amp, "mix", dac_tas58xx_get_mix(d));
     cJSON_AddBoolToObject(amp, "pbtl", dac_tas58xx_is_pbtl(d));
+    /* A TAS5805M cannot route its inputs, so it has only the one routing. */
+    cJSON_AddBoolToObject(amp, "mix_fixed", !dac_tas58xx_can_route(d));
 
     cJSON *gains = cJSON_AddArrayToObject(amp, "gains");
     cJSON *mutes = cJSON_AddArrayToObject(amp, "mutes");
@@ -2285,6 +2287,12 @@ static esp_err_t bq_post_handler(httpd_req_t *req) {
     if (!json_int_in_range(mix, 0, TAS58XX_MIX_COUNT - 1)) {
       cJSON_Delete(json);
       httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad 'mix'");
+      return ESP_FAIL;
+    }
+    if (mix->valueint != TAS58XX_MIX_STEREO && !dac_tas58xx_can_route(dev)) {
+      cJSON_Delete(json);
+      httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                          "This amplifier cannot route its inputs");
       return ESP_FAIL;
     }
     dac_tas58xx_set_mix(dev, (tas58xx_mix_t)mix->valueint);

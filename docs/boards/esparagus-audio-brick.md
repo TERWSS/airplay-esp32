@@ -125,9 +125,10 @@ Two things do not carry over:
 
 The **input mixer** is TAS5825M-only too. Summing to mono or feeding one channel to both
 outputs is done in the DSP mixer, and only the TAS5825M's mixer is implemented here, so
-a TAS5805M passes the stereo pair straight through and logs a warning if asked for
-anything else. That also means no crossover layout needing a summed or single-channel
-feed — the ones that route the pair as-is still work.
+a TAS5805M passes the stereo pair straight through: the [Equaliser](#equaliser) page
+shows its routing greyed out, and the firmware refuses any other. That also means no
+crossover layout needing a summed or single-channel feed — the ones that route the pair
+as-is still work.
 
 ## Equaliser
 
