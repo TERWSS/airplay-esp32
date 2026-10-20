@@ -34,6 +34,7 @@
 
 #if CONFIG_USB_DEVICE_UAC_AS_PART
 #include "usb_desc_itf.h"
+#include "usb_descriptors.h"
 #endif
 
 #include <inttypes.h>
@@ -59,14 +60,27 @@ static const char *TAG = "usb_sink";
 
 #define BYTES_PER_FRAME 4 // 16-bit stereo
 
-// ~100 ms of slack between the USB stack and I2S, primed with ~20 ms so
+// ~50 ms of slack between the USB stack and I2S, primed with ~20 ms so
 // the first writes don't immediately underrun.
 #define RINGBUF_SIZE \
-  ((size_t)(CONFIG_OUTPUT_SAMPLE_RATE_HZ / 10) * BYTES_PER_FRAME)
+  ((size_t)(CONFIG_OUTPUT_SAMPLE_RATE_HZ / 20) * BYTES_PER_FRAME)
 #define RINGBUF_PREFETCH \
   ((size_t)(CONFIG_OUTPUT_SAMPLE_RATE_HZ / 50) * BYTES_PER_FRAME)
 
 #define IDLE_TIMEOUT_US ((int64_t)CONFIG_USB_AUDIO_SINK_IDLE_MS * 1000)
+
+// usb_device_uac reads each 1 ms packet into a single buffer from the USB
+// interrupt and wakes its speaker task, which calls uac_output_cb(); a packet
+// that comes before the task has run overwrites the one before it, and only
+// the gap between our callbacks shows it.  Each callback runs less than 1 ms
+// after its packet, or a later one would have been delivered instead, so a
+// gap of g ms means at least floor(g) - 1 ms of audio never reached us.  The
+// task may have run late, the interrupt may have been held off, or the host
+// may have sent nothing; the gap alone does not say which.  The first
+// delivery after the host starts is the component's prefill of several
+// packets, and has no gap to measure.
+#define USB_BYTES_PER_MS \
+  ((size_t)(CONFIG_UAC_SAMPLE_RATE / 1000) * BYTES_PER_FRAME)
 
 #define SINK_TASK_STACK 4096
 #define SINK_TASK_PRIO  AUDIO_PLAYBACK_TASK_PRIORITY
@@ -92,6 +106,14 @@ static uint32_t s_dropped;
 static uint32_t s_underruns;
 static _Atomic uint32_t s_rx_bytes;
 static int64_t s_stats_us;
+// Audio that never reached uac_output_cb() this stream, and the longest gap
+// between two callbacks since the last stats line.  Written on the
+// component's task, read and reset on the sink task.
+static _Atomic uint32_t s_missing_ms;
+static _Atomic uint32_t s_gap_max_us;
+// Sink task only: what has been reported, and the stream's longest gap.
+static uint32_t s_missing_logged;
+static uint32_t s_stream_gap_max_us;
 
 #define STATS_INTERVAL_US 2000000
 
@@ -141,7 +163,17 @@ static esp_err_t uac_output_cb(uint8_t *buf, size_t len, void *cb_ctx) {
     return ESP_OK;
   }
 
-  s_last_rx_us = esp_timer_get_time();
+  const int64_t now = esp_timer_get_time();
+  if (len <= USB_BYTES_PER_MS) {
+    const int64_t gap_us = now - s_last_rx_us;
+    if (gap_us >= 2000) {
+      atomic_fetch_add(&s_missing_ms, (uint32_t)(gap_us / 1000 - 1));
+    }
+    if (gap_us > (int64_t)atomic_load(&s_gap_max_us)) {
+      atomic_store(&s_gap_max_us, (uint32_t)gap_us);
+    }
+  }
+  s_last_rx_us = now;
   atomic_fetch_add(&s_rx_bytes, (uint32_t)len);
 
   if (xRingbufferSend(ringbuf, buf, len, 0) != pdTRUE) {
@@ -211,6 +243,15 @@ static void ringbuf_drain(void) {
   }
 }
 
+// The longest callback gap since the last call, folded into the stream's.
+static uint32_t take_gap_max_us(void) {
+  uint32_t gap_us = atomic_exchange(&s_gap_max_us, 0);
+  if (gap_us > s_stream_gap_max_us) {
+    s_stream_gap_max_us = gap_us;
+  }
+  return gap_us;
+}
+
 // Diagnostic: the host's delivered frame rate should equal the I2S rate.  A
 // standing difference means the two clocks are not locked and the ring buffer
 // is absorbing the error until it runs dry or overflows.
@@ -229,6 +270,16 @@ static void log_stats(void) {
            " underruns %" PRIu32,
            fps, CONFIG_OUTPUT_SAMPLE_RATE_HZ, (unsigned)ringbuf_filled(),
            (unsigned)RINGBUF_SIZE, s_dropped, s_underruns);
+
+  uint32_t gap_us = take_gap_max_us();
+  uint32_t missing_ms = atomic_load(&s_missing_ms);
+  if (missing_ms != s_missing_logged) {
+    ESP_LOGW(TAG,
+             "%" PRIu32 " ms of USB audio missing (longest gap %" PRIu32
+             ".%" PRIu32 " ms)",
+             missing_ms - s_missing_logged, gap_us / 1000, gap_us % 1000 / 100);
+    s_missing_logged = missing_ms;
+  }
 }
 
 static void usb_sink_task(void *arg) {
@@ -263,6 +314,10 @@ static void usb_sink_task(void *arg) {
       s_dropped = 0;
       s_underruns = 0;
       atomic_store(&s_rx_bytes, 0);
+      atomic_store(&s_missing_ms, 0);
+      atomic_store(&s_gap_max_us, 0);
+      s_missing_logged = 0;
+      s_stream_gap_max_us = 0;
       s_stats_us = esp_timer_get_time();
       continue;
     }
@@ -280,8 +335,13 @@ static void usb_sink_task(void *arg) {
     }
 
     if (esp_timer_get_time() - s_last_rx_us > IDLE_TIMEOUT_US) {
-      ESP_LOGI(TAG, "Host stream idle, releasing output (%" PRIu32 " dropped)",
-               s_dropped);
+      (void)take_gap_max_us();
+      ESP_LOGI(TAG,
+               "Host stream idle, releasing output (%" PRIu32
+               " dropped, %" PRIu32 " ms missing, longest gap %" PRIu32
+               ".%" PRIu32 " ms)",
+               s_dropped, atomic_load(&s_missing_ms),
+               s_stream_gap_max_us / 1000, s_stream_gap_max_us % 1000 / 100);
       s_streaming = false;
       ringbuf_drain();
       audio_output_flush();
@@ -333,6 +393,14 @@ esp_err_t usb_audio_sink_init(usb_audio_sink_state_cb_t state_cb) {
     s_ringbuf = NULL;
     return ESP_ERR_NO_MEM;
   }
+
+#if CONFIG_USB_DEVICE_UAC_AS_PART
+  // The host reads the name once, as it enumerates, so a rename shows after
+  // the next restart, as it does for AirPlay.
+  char name[65];
+  settings_get_device_name(name, sizeof(name));
+  usb_descriptors_set_name(name);
+#endif
 
   uac_device_config_t cfg = {
       .skip_tinyusb_init = false,

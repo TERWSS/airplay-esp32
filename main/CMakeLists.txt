@@ -5,6 +5,7 @@ set( SRC_FILES
     "audio/audio_receiver.c"
     "audio/audio_stream.c"
     "audio/audio_stream_realtime.c"
+    "audio/rtp_resend.c"
     "audio/audio_stream_buffered.c"
     "audio/audio_decoder.c"
     "audio/audio_buffer.c"
@@ -124,6 +125,7 @@ set( DEPS
     dac_tas58xx
     dac_tas57xx
     dac_pcm51xx
+    husb238a
     display
     audio-resampler
     esp_eth
