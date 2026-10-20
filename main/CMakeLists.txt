@@ -5,6 +5,7 @@ set( SRC_FILES
     "audio/audio_receiver.c"
     "audio/audio_stream.c"
     "audio/audio_stream_realtime.c"
+    "audio/rtp_resend.c"
     "audio/audio_stream_buffered.c"
     "audio/audio_decoder.c"
     "audio/audio_buffer.c"

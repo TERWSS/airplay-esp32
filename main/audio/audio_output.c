@@ -248,9 +248,13 @@ static void playback_task(void *arg) {
     if (flush_requested) {
       flush_requested = false;
       audio_resample_reset();
-      i2s_channel_disable(tx_handle);
-      output_cursor_reset();
-      i2s_channel_enable(tx_handle);
+      // The DMA ring is left running.  Stopping the channel to discard its
+      // few milliseconds also stops the bit clock, and an amplifier that
+      // mutes on a clock loss (the MAX98357A) pops when it comes back, once
+      // per flush: a seek flushes twice within 50 ms, which crackles.  The
+      // ring holds silence by now anyway, since the render went quiet at the
+      // pause, and the cursor counters stay continuous, which is what the
+      // depth model expects.
     }
     size_t samples = audio_output_read_source(pcm, FRAME_SAMPLES + 1);
     if (samples > 0) {
