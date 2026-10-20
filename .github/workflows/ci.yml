@@ -68,6 +68,9 @@ jobs:
       - name: Test the realtime stream's resend requests
         run: python3 tests/rtp_resend/run.py
 
+      - name: Test the USB-PD trigger against a simulated charger
+        run: python3 tests/husb238a/run.py
+
   lint-check:
     needs: changes
     if: needs.changes.outputs.code == 'true'
