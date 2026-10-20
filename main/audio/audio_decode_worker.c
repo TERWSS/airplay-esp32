@@ -38,6 +38,13 @@
  * consumers on separate cores. */
 #define AUDIO_DECODE_TASK_CORE 0
 
+/* After a start or seek the sender bursts well ahead of realtime, and the
+ * task then decodes back to back until the timeline fills, several seconds
+ * of audio. On a slow board (an ESP32 with 40 MHz PSRAM and heap poisoning)
+ * that keeps IDLE0 off core 0 past the task watchdog's 5 s, so give the core
+ * up for a tick whenever it has been decoding this long without waiting. */
+#define AUDIO_DECODE_MAX_BUSY_MS 100U
+
 typedef struct audio_decode_job {
   uint32_t generation;
   audio_encoded_packet_t packet;
@@ -77,11 +84,16 @@ static void job_free(audio_decode_job_t *job) {
 
 static void decode_task(void *arg) {
   audio_decode_worker_t *worker = (audio_decode_worker_t *)arg;
+  TickType_t busy_since = xTaskGetTickCount();
 
   for (;;) {
+    const bool will_wait = uxQueueMessagesWaiting(worker->queue) == 0U;
     audio_decode_job_t *job = NULL;
     if (xQueueReceive(worker->queue, &job, portMAX_DELAY) != pdTRUE) {
       continue;
+    }
+    if (will_wait) {
+      busy_since = xTaskGetTickCount();
     }
 
     /* NULL is the shutdown sentinel. */
@@ -114,6 +126,12 @@ static void decode_task(void *arg) {
     }
 
     job_free(job);
+
+    if (xTaskGetTickCount() - busy_since >=
+        pdMS_TO_TICKS(AUDIO_DECODE_MAX_BUSY_MS)) {
+      vTaskDelay(1);
+      busy_since = xTaskGetTickCount();
+    }
   }
 
   worker->task = NULL;
