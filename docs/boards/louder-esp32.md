@@ -26,7 +26,7 @@ Volume is done in the amplifier (`CONFIG_DAC_CONTROLS_VOLUME`) rather than in so
 | `louder-esp32-plus-bt` | ESP32 | TAS5825M | yes | yes |
 | `louder-esp32-s3` | ESP32-S3 | TAS5805M | — | yes |
 | `louder-esp32-s3-plus` | ESP32-S3 | TAS5825M | — | yes |
-| `louder-esp32-s3-mini` | ESP32-S3 | TAS5805M, bridged | — | — |
+| `louder-esp32-s3-mini` | ESP32-S3 | TAS5805M, bridged | — | yes |
 
 Bluetooth Classic exists only on the original ESP32, so neither S3 board has a `-bt`
 build. On an ESP32 the published binary is the Bluetooth one.
