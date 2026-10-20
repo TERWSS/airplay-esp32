@@ -35,6 +35,7 @@
 
 #if CONFIG_USB_DEVICE_UAC_AS_PART
 #include "usb_desc_itf.h"
+#include "usb_descriptors.h"
 #endif
 
 #include <inttypes.h>
@@ -362,6 +363,14 @@ esp_err_t usb_audio_sink_init(usb_audio_sink_state_cb_t state_cb) {
     s_ringbuf = NULL;
     return ESP_ERR_NO_MEM;
   }
+
+#if CONFIG_USB_DEVICE_UAC_AS_PART
+  // The host reads the name once, as it enumerates, so a rename shows after
+  // the next restart, as it does for AirPlay.
+  char name[65];
+  settings_get_device_name(name, sizeof(name));
+  usb_descriptors_set_name(name);
+#endif
 
   uac_device_config_t cfg = {
       .skip_tinyusb_init = false,
