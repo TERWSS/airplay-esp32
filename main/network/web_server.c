@@ -607,7 +607,7 @@ static esp_err_t volume_post_handler(httpd_req_t *req) {
   if (db > VOLUME_UI_MAX_DB) {
     db = VOLUME_UI_MAX_DB;
   }
-  settings_set_volume(db);
+  playback_control_set_volume_db(db);
   if (persist) {
     settings_persist_volume();
   }
