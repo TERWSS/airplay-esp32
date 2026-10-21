@@ -1347,7 +1347,7 @@ static void handle_setup(int socket, rtsp_conn_t *conn,
         }
       }
     }
-    if (latency_min > 0 && latency_min <= 5 * 44100) {
+    if (latency_min > 0 && latency_min <= INT64_C(5) * 44100) {
       latency_src = "SETUP latencyMin";
     } else {
       latency_min = AIRPLAY_RT_LATENCY_DEFAULT_SAMPLES;

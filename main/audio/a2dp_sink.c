@@ -747,6 +747,8 @@ static void bt_register_profiles(void) {
   if (pin_len > ESP_BT_PIN_CODE_LEN) {
     pin_len = ESP_BT_PIN_CODE_LEN;
   }
+  // Length-delimited, not a C string.
+  // NOLINTNEXTLINE(bugprone-not-null-terminated-result)
   memcpy(pin_code, pin_str, pin_len);
   esp_bt_gap_set_pin(pin_type, pin_len, pin_code);
   ESP_LOGI(TAG, "BT PIN set (%d digits)", pin_len);
