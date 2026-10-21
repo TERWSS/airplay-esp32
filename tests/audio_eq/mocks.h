@@ -34,6 +34,7 @@ typedef void *SemaphoreHandle_t;
 #define xSemaphoreCreateMutex() ((SemaphoreHandle_t)1)
 #define xSemaphoreTake(m, t)    ((void)(m), (void)(t))
 #define xSemaphoreGive(m)       ((void)(m))
+#define vSemaphoreDelete(m)     ((void)(m))
 
 #define SETTINGS_AMP_OUTPUTS 4
 esp_err_t settings_get_amp_gain(float gain[SETTINGS_AMP_OUTPUTS]);

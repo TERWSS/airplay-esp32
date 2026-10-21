@@ -123,8 +123,10 @@ typedef struct {
 } eq_model_t;
 
 /* Model, owned by whoever holds s_mutex (web server, audio tasks on a clock
- * change). */
+ * change). A clock change stops the I2S clock and then waits on it, so no
+ * flash I/O happens under it: s_save_mutex orders the level writes instead. */
 static SemaphoreHandle_t s_mutex;
+static SemaphoreHandle_t s_save_mutex;
 static eq_model_t *s_model;
 static bool s_ganged = true;
 static float s_trim_db[AUDIO_EQ_CHANNELS];
@@ -385,16 +387,17 @@ static void chains_default(void) {
   }
 }
 
-/* Load the committed chains; false leaves the model alone. */
-static bool chains_load(void) {
+/* Read and check the committed chains, without the mutex; NULL when there
+ * are none to use. The caller frees the result. */
+static cfg_file_t *chains_read(void) {
   FILE *f = fopen(CFG_PATH, "rb");
   if (!f) {
-    return false;
+    return NULL;
   }
   cfg_file_t *cfg = calloc(1, sizeof(*cfg));
   if (!cfg) {
     fclose(f);
-    return false;
+    return NULL;
   }
   size_t n = fread(cfg, 1, sizeof(*cfg), f);
   fclose(f);
@@ -407,25 +410,37 @@ static bool chains_load(void) {
       ok = tas58xx_bq_validate(&cfg->bq[ch][i], NULL);
     }
   }
-  if (ok) {
-    memcpy(s_model->chain, cfg->bq, sizeof(s_model->chain));
-    s_ganged = cfg->ganged != 0;
-  } else {
+  if (!ok) {
     ESP_LOGW(TAG, "ignoring %s (%u bytes)", CFG_PATH, (unsigned)n);
+    free(cfg);
+    return NULL;
   }
-  free(cfg);
-  return ok;
+  return cfg;
 }
 
-static void levels_save(void) {
-  float gain[SETTINGS_AMP_OUTPUTS] = {0};
-  uint8_t mute[SETTINGS_AMP_OUTPUTS] = {0};
+/* Put chains from chains_read() into the model; under the mutex. */
+static void chains_apply(const cfg_file_t *cfg) {
+  memcpy(s_model->chain, cfg->bq, sizeof(s_model->chain));
+  s_ganged = cfg->ganged != 0;
+}
+
+typedef struct {
+  float gain[SETTINGS_AMP_OUTPUTS];
+  uint8_t mute[SETTINGS_AMP_OUTPUTS];
+} levels_t;
+
+/* Copy the levels out under the mutex, to write once it is released. */
+static void levels_snapshot(levels_t *out) {
+  memset(out, 0, sizeof(*out));
   for (int ch = 0; ch < AUDIO_EQ_CHANNELS; ch++) {
-    gain[ch] = s_trim_db[ch];
-    mute[ch] = s_mute[ch];
+    out->gain[ch] = s_trim_db[ch];
+    out->mute[ch] = s_mute[ch];
   }
-  settings_set_amp_gain(gain);
-  settings_set_amp_mute(mute);
+}
+
+static void levels_save(const levels_t *levels) {
+  settings_set_amp_gain(levels->gain);
+  settings_set_amp_mute(levels->mute);
 }
 
 static void levels_load(void) {
@@ -456,19 +471,31 @@ esp_err_t audio_eq_init(void) {
     return ESP_ERR_NO_MEM;
   }
   s_mutex = xSemaphoreCreateMutex();
-  if (s_mutex == NULL) {
+  s_save_mutex = xSemaphoreCreateMutex();
+  if (s_mutex == NULL || s_save_mutex == NULL) {
+    if (s_mutex != NULL) {
+      vSemaphoreDelete(s_mutex);
+      s_mutex = NULL;
+    }
+    if (s_save_mutex != NULL) {
+      vSemaphoreDelete(s_save_mutex);
+      s_save_mutex = NULL;
+    }
     heap_caps_free(s_model);
     s_model = NULL;
     return ESP_ERR_NO_MEM;
   }
+  cfg_file_t *cfg = chains_read();
   xSemaphoreTake(s_mutex, portMAX_DELAY);
   chains_default();
-  if (chains_load()) {
+  if (cfg) {
+    chains_apply(cfg);
     ESP_LOGI(TAG, "loaded %s", CFG_PATH);
   }
   levels_load();
   redesign();
   xSemaphoreGive(s_mutex);
+  free(cfg);
   return ESP_OK;
 }
 
@@ -735,11 +762,15 @@ esp_err_t audio_eq_revert(void) {
   if (s_mutex == NULL) {
     return ESP_ERR_INVALID_STATE;
   }
+  cfg_file_t *cfg = chains_read();
   xSemaphoreTake(s_mutex, portMAX_DELAY);
   chains_default();
-  chains_load();
+  if (cfg) {
+    chains_apply(cfg);
+  }
   redesign();
   xSemaphoreGive(s_mutex);
+  free(cfg);
   return ESP_OK;
 }
 
@@ -748,13 +779,20 @@ void audio_eq_set_trim_db(int ch, float db) {
     return;
   }
   db = fminf(fmaxf(db, AUDIO_EQ_TRIM_MIN_DB), AUDIO_EQ_TRIM_MAX_DB);
+  levels_t levels;
+  xSemaphoreTake(s_save_mutex, portMAX_DELAY);
   xSemaphoreTake(s_mutex, portMAX_DELAY);
-  if (db != s_trim_db[ch]) {
+  bool changed = db != s_trim_db[ch];
+  if (changed) {
     s_trim_db[ch] = db;
     redesign();
-    levels_save();
+    levels_snapshot(&levels);
   }
   xSemaphoreGive(s_mutex);
+  if (changed) {
+    levels_save(&levels);
+  }
+  xSemaphoreGive(s_save_mutex);
 }
 
 float audio_eq_get_trim_db(int ch) {
@@ -765,13 +803,20 @@ void audio_eq_set_mute(int ch, bool mute) {
   if (s_mutex == NULL || ch < 0 || ch >= AUDIO_EQ_CHANNELS) {
     return;
   }
+  levels_t levels;
+  xSemaphoreTake(s_save_mutex, portMAX_DELAY);
   xSemaphoreTake(s_mutex, portMAX_DELAY);
-  if (mute != s_mute[ch]) {
+  bool changed = mute != s_mute[ch];
+  if (changed) {
     s_mute[ch] = mute;
     redesign();
-    levels_save();
+    levels_snapshot(&levels);
   }
   xSemaphoreGive(s_mutex);
+  if (changed) {
+    levels_save(&levels);
+  }
+  xSemaphoreGive(s_save_mutex);
 }
 
 bool audio_eq_get_mute(int ch) {
