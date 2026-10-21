@@ -184,7 +184,7 @@ menu "Airplay ESP Configuration"
     config SOFTWARE_EQ
         bool "Software parametric EQ"
         depends on AUDIO_OUTPUT_I2S && !DAC_TAS58XX && !DAC_TAS57XX
-        depends on SOC_CPU_HAS_FPU
+        depends on SOC_CPU_HAS_FPU && SPIRAM
         default n
         help
             Run the Biquad EQ page (/bq) on the ESP32 itself, for plain I2S
@@ -196,7 +196,7 @@ menu "Airplay ESP Configuration"
             The filters run in single-precision floating point on the audio
             task, so this needs a chip with an FPU (not the ESP32-S2 or
             ESP32-C5), and the CPU it takes grows with the number of active
-            sections. Boosts are paid for by turning the signal down ahead
+            sections. Its tables live in PSRAM, so it needs that too. Boosts are paid for by turning the signal down ahead
             of the filters, so they cannot clip.
 
     config I2S_32BIT_OUTPUT
