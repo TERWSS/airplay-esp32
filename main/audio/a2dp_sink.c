@@ -607,8 +607,12 @@ static void bt_avrc_ct_cb(esp_avrc_ct_cb_event_t event,
     local.meta_rsp.attr_text = copy;
   }
 
-  bt_app_work_dispatch(bt_avrc_ct_evt_handler, (uint16_t)event, &local,
-                       sizeof(esp_avrc_ct_cb_param_t));
+  // Not dispatched: the copy is still ours.
+  if (!bt_app_work_dispatch(bt_avrc_ct_evt_handler, (uint16_t)event, &local,
+                            sizeof(esp_avrc_ct_cb_param_t)) &&
+      event == ESP_AVRC_CT_METADATA_RSP_EVT) {
+    free(local.meta_rsp.attr_text);
+  }
 }
 
 /* ========================================================================== */

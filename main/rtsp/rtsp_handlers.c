@@ -52,7 +52,7 @@ uint64_t airplay_features(void) {
 
 static void configure_codec(audio_format_t *fmt, const char *name, int64_t sr,
                             int64_t spf) {
-  strcpy(fmt->codec, name);
+  strlcpy(fmt->codec, name, sizeof(fmt->codec));
   fmt->sample_rate = (int)sr;
   fmt->channels = 2;
   fmt->bits_per_sample = 16;
