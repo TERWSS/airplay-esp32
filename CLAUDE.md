@@ -74,6 +74,7 @@ idf.py -p /dev/ttyUSB0 monitor
 | `louder-esp32-bt` | Same + Bluetooth | |
 | `louder-esp32-s3` | ESP32-S3 + TAS5805M | |
 | `louder-esp32-s3-mini` | Louder-ESP32-Mini: ESP32-S3 + TAS5805M | Bridged (PBTL) in copper: `CONFIG_TAS58XX_FORCE_PBTL` is not optional |
+| `louder-esp32-s3-mini-uac` | Same, as a USB speaker | Extends louder-esp32-s3-mini + `defaults.uac` |
 
 Bluetooth Classic only exists on the original ESP32, so the S3 revision of a board never has a `-bt` environment.
 
