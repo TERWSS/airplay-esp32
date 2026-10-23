@@ -7,6 +7,9 @@
 #include "audio_stream.h"
 #include "plist.h"
 
+/* No terminator. */
+static const uint8_t BPLIST_MAGIC[8] = {'b', 'p', 'l', 'i', 's', 't', '0', '0'};
+
 static bool bplist_has_room(size_t pos, size_t need, size_t capacity) {
   return pos <= capacity && need <= capacity - pos;
 }
@@ -47,6 +50,8 @@ static bool bplist_write_ascii_string(uint8_t *out, size_t capacity,
       !bplist_has_room(*pos, len, capacity)) {
     return false;
   }
+  // Length-prefixed, no terminator.
+  // NOLINTNEXTLINE(bugprone-not-null-terminated-result)
   memcpy(out + *pos, value, len);
   *pos += len;
   return true;
@@ -249,7 +254,7 @@ size_t bplist_build_initial_setup(uint8_t *out, size_t capacity,
   }
 
   size_t pos = 0;
-  memcpy(out + pos, "bplist00", 8);
+  memcpy(out + pos, BPLIST_MAGIC, sizeof(BPLIST_MAGIC));
   pos += 8;
 
   size_t offsets[10];
@@ -321,7 +326,7 @@ size_t bplist_build_stream_setup(uint8_t *out, size_t capacity,
   }
 
   size_t pos = 0;
-  memcpy(out + pos, "bplist00", 8);
+  memcpy(out + pos, BPLIST_MAGIC, sizeof(BPLIST_MAGIC));
   pos += 8;
 
   size_t offsets[16];
@@ -447,7 +452,7 @@ size_t bplist_build_feedback_response(uint8_t *out, size_t capacity,
   }
 
   size_t pos = 0;
-  memcpy(out + pos, "bplist00", 8);
+  memcpy(out + pos, BPLIST_MAGIC, sizeof(BPLIST_MAGIC));
   pos += 8;
 
   size_t offsets[10];
@@ -571,7 +576,7 @@ size_t bplist_build_info_response(uint8_t *out, size_t capacity,
   if (!bplist_has_room(pos, 8, capacity)) {
     return 0;
   }
-  memcpy(out + pos, "bplist00", 8);
+  memcpy(out + pos, BPLIST_MAGIC, sizeof(BPLIST_MAGIC));
   pos += 8;
 
   ADD_OFFSET(); // 0: "deviceid"
