@@ -62,6 +62,22 @@ input:focus{outline:none;border-color:#e94560}
 <div class='form-group'><label>AirPlay Device Name</label><input type='text' id='dev-name' placeholder='My Speaker'></div>
 <button class='btn btn-primary' onclick='saveName()'>Save Name</button>
 <div id='name-msg'></div>
+<div class='form-group' style='margin-top:18px'><label for='airplay-mode'>AirPlay Mode</label>
+<select id='airplay-mode' onchange='saveAirplayMode()'>
+<option value='0'>Multi-room (v2)</option>
+<option value='1'>Legacy (v1)</option>
+</select></div>
+<div style='font-size:12px;opacity:0.7;margin-top:-8px;margin-bottom:6px'>Some software only works with AirPlay v1.<br>Apple devices still work in that mode, but without v2 features, such as multi-speaker sync.<br>Volume / track seek hardware buttons require version 1.</div>
+<div id='airplay-msg'></div>
+<div id='sendspin-group' style='display:none'>
+<div class='form-group' style='margin-top:18px'><label for='sendspin-enable'>Native SendSpin Client Support</label>
+<select id='sendspin-enable' onchange='saveSendspin()'>
+<option value='0'>Disabled</option>
+<option value='1'>Enabled</option>
+</select></div>
+<div style='font-size:12px;opacity:0.7;margin-top:-8px;margin-bottom:6px'>Experimental. Lets a SendSpin server such as Music Assistant play to this device.<br>Takes effect after a restart.<br><span id='sendspin-pin'></span></div>
+<div style='font-size:12px;line-height:1.45;margin-bottom:6px;opacity:0.7'>AirPlay and Bluetooth take priority: starting a session there pauses the SendSpin server's queue and takes the output, and ending it hands the output back and resumes.</div>
+<div id='sendspin-msg'></div></div>
 <div class='form-group' style='margin-top:18px'><label for='led-brightness'>LED Brightness</label>
 <div class='slider-row'><input type='range' id='led-brightness' min='0' max='255' value='128' oninput='document.getElementById("led-pct").textContent=Math.round(this.value/255*100)+"%"'>
 <span id='led-pct'>50%</span></div></div>
@@ -76,15 +92,35 @@ input:focus{outline:none;border-color:#e94560}
 <option value='3'>Mono (L+R)</option>
 </select></div>
 <div id='chan-msg'></div></div>
+<div id='pbtl-group' style='display:none;margin-top:18px'>
+<div class='form-group'><label for='pbtl-mode'>Primary Amplifier</label>
+<select id='pbtl-mode' onchange='savePbtl()'>
+<option value='0'>Stereo (BTL)</option>
+<option value='1'>Bridged mono (PBTL)</option>
+</select></div>
+<div id='pbtl-msg'></div></div>
 <div id='dual-group' style='display:none;margin-top:18px'>
-<div class='form-group'><label for='dual-mode'>DAC Configuration</label>
+<div class='form-group'><label for='dual-mode'>Second Amplifier</label>
 <select id='dual-mode' onchange='saveDual()'>
-<option value='0'>2.1 (Satellites / Sub)</option>
-<option value='1'>Bi-Amp</option>
+<option value='1'>Bridged mono (PBTL)</option>
+<option value='0'>Stereo (BTL)</option>
 </select></div>
 <div id='dual-msg'></div></div>
+<div id='pd-group' style='display:none;margin-top:18px'>
+<div class='form-group'><label for='pd-volts'>USB-C Power</label>
+<select id='pd-volts' onchange='savePd()'></select></div>
+<div id='pd-now' style='font-size:12px;opacity:0.7;margin-top:-8px;margin-bottom:6px'></div>
+<div style='font-size:12px;opacity:0.7;margin-bottom:6px'>A higher voltage lets the speaker play louder before it distorts, once the digital gain below is raised to match: at full volume about 3, 9, 15, 22 or 39 W into 4&nbsp;&Omega; at 5, 9, 12, 15 or 20 V, and half that into 8&nbsp;&Omega;. 20 V needs a 65 W charger. Choose what your speaker can take.</div>
+<div id='pd-msg'></div></div>
+<div id='fv-group' style='display:none;margin-top:18px'>
+<div class='form-group'><label for='fv-db'>Digital gain</label>
+<select id='fv-db' onchange='saveFv(Number(this.value))'></select></div>
+<div style='font-size:12px;opacity:0.7;margin-bottom:6px'>How loud the amplifier plays at full volume. Match it to the supply: the recommended level is the loudest that stays clean on it. Louder than that clips the loudest passages, and so does an EQ boost, which the EQ page warns of.</div>
+<div id='fv-msg'></div></div>
 <div id='eq-link' style='display:none;margin-top:18px'>
-<a href='/eq' class='btn btn-secondary'>EQ Settings</a></div>
+<a href='/bq' class='btn btn-secondary'>Biquad EQ</a></div>
+<div id='hf1-link' style='display:none;margin-top:18px'>
+<a href='/hf' class='btn btn-secondary'>HybridFlow Tuning</a></div>
 </div>
 <div class='card'><h2>Firmware Update</h2>
 <div class='file-row'><input type='file' id='fw-file' accept='.bin' style='display:none'>
@@ -151,13 +187,21 @@ async function loadChannel(){
   catch(e){console.warn('Could not load channel mode',e);}
   applyChanLabels();
   applyAmpLayout();}
+var primaryPbtl=false;
+var pbtlLoaded=false;
 var dualDevices=1;
-var dualMode=0;
+var dualPbtl=true;
 var dualLoaded=false;
+var pdLoaded=false;
+var fvLoaded=false,fvState=null;
+var pdVolts=0;
+var airplayV1=false;
+var sendspinEnabled=false;
+var sendspinLoaded=false;
 var chanLocked=false;
 var chanDsp=false;
-/* A bi-amp flow crosses the two outputs over into one speaker, so the choice
-   is which input channel to feed it — there is no stereo to pass through. */
+/* When the DSP crosses the two outputs over into one speaker there is no
+   stereo to pass through, so the choice is which input channel to feed it. */
 function applyChanLabels(){
   document.getElementById('chan-label').textContent=
     chanDsp?'Input Channel':'Output Channel';
@@ -165,9 +209,13 @@ function applyChanLabels(){
   o[0].text=chanDsp?'Both (L+R)/2':'Stereo';
   o[3].text=chanDsp?'Both (L+R)/2':'Mono (L+R)';
 }
+var PBTL_WARN={
+  1:'Bridge the primary amplifier?\n\nIt is reconfigured as PBTL mono: its OUT_A and OUT_B terminals must be bridged together and wired to a single driver.\n\nPower off and rewire.',
+  0:'Unbridge the primary amplifier?\n\nIt runs as a stereo BTL pair, driving two separate speakers.\n\nIf OUT_A and OUT_B are still bridged for PBTL you MUST un-bridge them first — leaving them shorted drives the two outputs against each other and can damage the amplifier and its output filters.'
+};
 var DUAL_WARN={
-  0:'Switch to 2.1 (Satellites / Sub)?\n\nThe second amplifier is reconfigured as PBTL mono: its OUT_A and OUT_B terminals must be bridged together and wired to a single subwoofer.\n\nRewire before restarting.',
-  1:'Switch to Bi-Amp?\n\nBoth amplifiers run as stereo BTL, with OUT_A driving the woofer and OUT_B the tweeter of one speaker.\n\nIf OUT_A and OUT_B are still bridged for a PBTL subwoofer you MUST unbridge them first — leaving them shorted drives the two outputs against each other and can damage the amplifier and its output filters.'
+  1:'Bridge the second amplifier?\n\nIt is reconfigured as PBTL mono: its OUT_A and OUT_B terminals must be bridged together and wired to a single driver.\n\Power off and rewire.',
+  0:'Unbridge the second amplifier?\n\nIt runs as a stereo BTL pair, driving two separate speakers.\n\nIf OUT_A and OUT_B are still bridged for PBTL you MUST un-bridge them first — leaving them shorted drives the two outputs against each other and can damage the amplifier and its output filters.'
 };
 /* With two amps the DAC configuration already fixes the routing, so per-output
    channel selection has no meaning. */
@@ -184,28 +232,121 @@ async function saveChannel(){
       chanLocked=!!d.locked;applyAmpLayout();}
     else{msg('chan-msg',d.error,'err');}}
   catch(e){msg('chan-msg','Error','err');console.error('saveChannel failed',e);}}
+async function loadPbtl(){
+  try{var r=await fetch('/api/audio/pbtl');if(!r.ok)return;var d=await r.json();
+    if(d.success){primaryPbtl=!!d.pbtl;
+      document.getElementById('pbtl-mode').value=d.pbtl?'1':'0';
+      document.getElementById('pbtl-group').style.display='';
+      if(d.forced){msg('pbtl-msg','PBTL mode is forced by configuration and cannot be changed.','info');}
+      else if(d.restart_required){msg('pbtl-msg','Restart to apply the new wiring.','err');}}
+    else if(d.forced){msg('pbtl-msg','PBTL mode is forced by configuration and cannot be changed.','info');}}
+  catch(e){console.warn('Could not load primary amplifier wiring',e);}}
+async function savePbtl(){
+  var sel=document.getElementById('pbtl-mode');
+  var v=Number.parseInt(sel.value,10);
+  var pbtl=v===1;
+  if(pbtl!==primaryPbtl&&!confirm(PBTL_WARN[v])){sel.value=primaryPbtl?'1':'0';return;}
+  try{var r=await fetch('/api/audio/pbtl',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pbtl:pbtl})});
+    var d=await r.json();
+    if(d.success){primaryPbtl=pbtl;msg('pbtl-msg','Saved! Rewire the speakers, then restart to apply.','ok');}
+    else{sel.value=primaryPbtl?'1':'0';msg('pbtl-msg',d.error,'err');}}
+  catch(e){sel.value=primaryPbtl?'1':'0';msg('pbtl-msg','Error','err');console.error('savePbtl failed',e);}}
 async function loadDual(){
   try{var r=await fetch('/api/audio/dual');if(!r.ok)return;var d=await r.json();
-    if(d.success&&d.devices>1){dualDevices=d.devices;dualMode=d.mode;
-      var sel=document.getElementById('dual-mode');
-      sel.value=String(d.mode);
-      if(!d.biamp){
-        sel.querySelector('option[value="1"]').disabled=true;
-        sel.querySelector('option[value="1"]').textContent='Bi-Amp (unavailable)';
-      }
+    if(d.success&&d.devices>1){dualDevices=d.devices;dualPbtl=!!d.pbtl;
+      document.getElementById('dual-mode').value=d.pbtl?'1':'0';
       document.getElementById('dual-group').style.display='';
-      if(d.restart_required){msg('dual-msg','Restart to apply the new wiring.','err');}}}
-  catch(e){console.warn('Could not load dual DAC mode',e);}
+      if(d.forced){msg('dual-msg','PBTL mode is forced by configuration and cannot be changed.','info');}
+      else if(d.restart_required){msg('dual-msg','Restart to apply the new wiring.','err');}}}
+  catch(e){console.warn('Could not load second amplifier wiring',e);}
   applyAmpLayout();}
 async function saveDual(){
   var sel=document.getElementById('dual-mode');
   var v=Number.parseInt(sel.value,10);
-  if(v!==dualMode&&!confirm(DUAL_WARN[v])){sel.value=String(dualMode);return;}
-  try{var r=await fetch('/api/audio/dual',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:v})});
+  var pbtl=v===1;
+  if(pbtl!==dualPbtl&&!confirm(DUAL_WARN[v])){sel.value=dualPbtl?'1':'0';return;}
+  try{var r=await fetch('/api/audio/dual',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pbtl:pbtl})});
     var d=await r.json();
-    if(d.success){dualMode=v;msg('dual-msg','Saved! Rewire the speakers, then restart to apply.','ok');}
-    else{sel.value=String(dualMode);msg('dual-msg',d.error,'err');}}
-  catch(e){sel.value=String(dualMode);msg('dual-msg','Error','err');console.error('saveDual failed',e);}}
+    if(d.success){dualPbtl=pbtl;msg('dual-msg','Saved! Rewire the speakers, then restart to apply.','ok');}
+    else{sel.value=dualPbtl?'1':'0';msg('dual-msg',d.error,'err');}}
+  catch(e){sel.value=dualPbtl?'1':'0';msg('dual-msg','Error','err');console.error('saveDual failed',e);}}
+function showPd(d){
+  var sel=document.getElementById('pd-volts');
+  var offered={};
+  (d.offers||[]).forEach(function(o){offered[o.volts]=o.ma;});
+  sel.innerHTML='';
+  (d.choices||[]).slice().reverse().forEach(function(v){var o=document.createElement('option');
+    o.value=String(v);o.textContent=v+' V'+(d.pd&&!offered[v]?' (not offered)':'');
+    sel.appendChild(o);});
+  sel.value=String(d.volts);pdVolts=d.volts;
+  var now=d.supply_mv>0?'Running at '+d.supply_mv/1000+' V':'Supply unknown';
+  if(d.pd){now+='. The charger offers '+d.offers.map(function(o){
+    return o.volts+' V at '+(o.ma/1000).toFixed(1)+' A';}).join(', ')+'.';}
+  else if(d.attached){now+='. The charger does not speak USB-PD, so the board stays at 5 V.';}
+  document.getElementById('pd-now').textContent=now;}
+async function loadPd(){
+  try{var r=await fetch('/api/power/usb-pd');if(!r.ok)return;var d=await r.json();
+    document.getElementById('pd-group').style.display='';showPd(d);}
+  catch(e){console.warn('Could not load the USB-C power',e);}}
+async function savePd(){
+  var sel=document.getElementById('pd-volts');
+  var v=Number.parseInt(sel.value,10);
+  sel.disabled=true;
+  msg('pd-msg','Asking the charger for '+v+' V...','ok');
+  try{var r=await fetch('/api/power/usb-pd',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({volts:v})});
+    if(!r.ok){sel.value=String(pdVolts);msg('pd-msg',await r.text(),'err');return;}
+    var d=await r.json();showPd(d);
+    if(d.supply_mv===v*1000){msg('pd-msg','Saved. The board now runs at '+v+' V.','ok');}
+    else if(d.supply_mv>0){msg('pd-msg','Saved, but this charger gave '+d.supply_mv/1000+' V. One that offers '+v+' V will get it.','err');}
+    else{msg('pd-msg','Saved, but the supply could not be read.','err');}}
+  catch(e){sel.value=String(pdVolts);msg('pd-msg','Error','err');console.error('savePd failed',e);}
+  finally{sel.disabled=false;}}
+function fvDb(v){return (v<0?'\u2212':'')+Math.abs(v).toFixed(1)+' dB';}
+function showFv(d){
+  fvState=d;var rec={},sel=document.getElementById('fv-db');
+  (d.recommended||[]).forEach(function(r){rec[r.db]=r.volts;});
+  sel.innerHTML='';
+  for(var v=0;v>=d.min_db;v-=0.5){var o=document.createElement('option');o.value=String(v);
+    o.textContent=fvDb(v)+(rec[v]?' (recommended for '+rec[v]+' V)':'');
+    sel.appendChild(o);}
+  sel.value=String(d.db);}
+async function loadFv(){
+  try{var r=await fetch('/api/audio/digital-gain');if(!r.ok)return;var d=await r.json();
+    document.getElementById('fv-group').style.display='';showFv(d);}
+  catch(e){console.warn('Could not load the digital gain',e);}}
+async function saveFv(db){
+  try{var r=await fetch('/api/audio/digital-gain',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({db:db})});
+    if(!r.ok){if(fvState)showFv(fvState);msg('fv-msg',await r.text(),'err');return;}
+    showFv(await r.json());msg('fv-msg','Saved.','ok');}
+  catch(e){if(fvState)showFv(fvState);msg('fv-msg','Error','err');console.error('saveFv failed',e);}}
+async function loadAirplayMode(){
+  try{var r=await fetch('/api/airplay/mode');if(!r.ok)return;var d=await r.json();
+    if(d.success){airplayV1=!!d.v1;
+      document.getElementById('airplay-mode').value=d.v1?'1':'0';
+      if(d.restart_required){msg('airplay-msg','Restart to apply the new mode.','err');}}}
+  catch(e){console.warn('Could not load AirPlay mode',e);}}
+async function saveAirplayMode(){
+  var sel=document.getElementById('airplay-mode');
+  var v1=sel.value==='1';
+  try{var r=await fetch('/api/airplay/mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({v1:v1})});
+    var d=await r.json();
+    if(d.success){airplayV1=v1;msg('airplay-msg',d.restart_required?'Saved! Restart to apply.':'Saved!','ok');}
+    else{sel.value=airplayV1?'1':'0';msg('airplay-msg',d.error,'err');}}
+  catch(e){sel.value=airplayV1?'1':'0';msg('airplay-msg','Error','err');console.error('saveAirplayMode failed',e);}}
+async function loadSendspin(){
+  try{var r=await fetch('/api/sendspin/mode');if(!r.ok)return;var d=await r.json();
+    if(d.success){sendspinEnabled=!!d.enabled;
+      document.getElementById('sendspin-enable').value=d.enabled?'1':'0';
+      if(d.restart_required){msg('sendspin-msg','Restart to apply.','err');}}}
+  catch(e){console.warn('Could not load Sendspin setting',e);}}
+async function saveSendspin(){
+  var sel=document.getElementById('sendspin-enable');
+  var en=sel.value==='1';
+  try{var r=await fetch('/api/sendspin/mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:en})});
+    var d=await r.json();
+    if(d.success){sendspinEnabled=en;msg('sendspin-msg',d.restart_required?'Saved! Restart to apply.':'Saved!','ok');}
+    else{sel.value=sendspinEnabled?'1':'0';msg('sendspin-msg',d.error,'err');}}
+  catch(e){sel.value=sendspinEnabled?'1':'0';msg('sendspin-msg','Error','err');console.error('saveSendspin failed',e);}}
 async function saveName(){
   var n=document.getElementById('dev-name').value.trim();if(!n){msg('name-msg','Enter a name','err');return;}
   try{var r=await fetch('/api/device/name',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n})});
@@ -241,13 +382,23 @@ async function loadInfo(){
       document.getElementById('info-phy').textContent=i.wifi_phy||'-';
       document.getElementById('info-bssid').textContent=i.wifi_bssid||'-';
       if(i.eq_supported||i.sub_supported){document.getElementById('eq-link').style.display='';}
-      /* Only a TAS58xx build registers /api/audio/dual; asking anyway logs a
-         warning on the device for every page load. */
-      if(i.dual_supported&&!dualLoaded){dualLoaded=true;loadDual();}
+      if(i.hf1_supported||i.hf3_supported){document.getElementById('hf1-link').style.display='';}
+      /* Only a TAS58xx build registers /api/audio/pbtl and /api/audio/dual;
+         asking anyway logs a warning on the device for every page load. */
+      if(i.dual_supported){if(!pbtlLoaded){pbtlLoaded=true;loadPbtl();}
+        if(!dualLoaded){dualLoaded=true;loadDual();}}
+      /* /api/audio/digital-gain is a TAS58xx one too. */
+      if(i.dual_supported&&!fvLoaded){fvLoaded=true;loadFv();}
+      /* Only a board whose USB-PD trigger answered serves the USB-C power. */
+      if(i.usb_pd_supported&&!pdLoaded){pdLoaded=true;loadPd();}
+      /* Only a Sendspin build registers /api/sendspin/mode. */
+      if(i.sendspin_supported){document.getElementById('sendspin-group').style.display='';
+        if(!sendspinLoaded){sendspinLoaded=true;loadSendspin();}
+        document.getElementById('sendspin-pin').textContent=i.sendspin_active?('Pairing PIN '+i.sendspin_pairing_pin+', '+i.sendspin_paired+' server(s) paired.'):'';}
       document.getElementById('dev-name').placeholder=i.device_name||'';}}catch(e){}}
 window.onload=function(){
   document.getElementById('fw-file').onchange=function(e){var f=e.target.files[0];
     document.getElementById('fw-name').textContent=f?f.name:'No file selected';
     document.getElementById('ota-btn').disabled=!f;};
-  loadInfo();loadBrightness();loadChannel();setInterval(loadInfo,30000);};
+  loadInfo();loadBrightness();loadChannel();loadAirplayMode();setInterval(loadInfo,30000);};
 </script></body></html>

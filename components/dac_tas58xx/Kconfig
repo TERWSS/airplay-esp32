@@ -9,4 +9,20 @@ if DAC_TAS58XX
             The TAS5825M DIG_VOL register range is +24 dB to -103 dB.
             A value of -10 means AirPlay full volume maps to -10 dB on the DAC.
 
+    config TAS58XX_FORCE_PBTL
+        bool "Force PBTL (mono) mode on primary amplifier"
+        default n
+        help
+            Force the primary TAS58xx amplifier into PBTL (mono) mode.
+            When enabled, the PBTL setting cannot be changed from the web UI.
+            Only available for TAS5825M/TAS5805M (not other DACs).
+            The amplifier must be wired for PBTL mode in hardware.
+
+            Set it for a board that ties OUT_A+ to OUT_A- and OUT_B+ to
+            OUT_B- in copper, such as the Louder-ESP32-Mini. That wiring must
+            never run as a stereo pair: each tied pair of half-bridges would
+            be driven against each other. A bridged TAS5805M plays the left
+            I2S channel, so the output channel mode defaults to mono (L+R)
+            on such a board.
+
 endif # DAC_TAS58XX

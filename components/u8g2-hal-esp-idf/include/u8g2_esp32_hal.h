@@ -1,3 +1,10 @@
+// SPDX-FileCopyrightText: 2017 Neil Kolban
+// SPDX-FileCopyrightText: 2020 Markus Frey
+// SPDX-License-Identifier: Apache-2.0
+//
+// Vendored from https://github.com/mkfrey/u8g2-hal-esp-idf and modified for
+// this project. See LICENSE in this directory.
+
 #ifndef U8G2_ESP32_HAL_H
 #define U8G2_ESP32_HAL_H
 /*
@@ -34,7 +41,7 @@
 
 #define I2C_MASTER_TX_BUF_DISABLE 0      //  I2C master do not need buffer
 #define I2C_MASTER_RX_BUF_DISABLE 0      //  I2C master do not need buffer
-#define I2C_MASTER_FREQ_HZ        100000 //  I2C master clock frequency
+#define I2C_MASTER_FREQ_HZ        400000 //  I2C master clock frequency
 #define ACK_CHECK_EN              0x1 //  I2C master will check ack from slave
 #define ACK_CHECK_DIS 0x0 //  I2C master will not check ack from slave
 
@@ -100,6 +107,14 @@ void u8g2_esp32_hal_set_i2c_bus(i2c_master_bus_handle_t bus);
  * Must be called after u8g2_esp32_hal_init().
  */
 void u8g2_esp32_hal_set_spi_host(spi_host_device_t host);
+
+/**
+ * Number of I2C transfers that have failed since boot.
+ * The byte callback cannot report a failure back through u8g2, so a caller
+ * that caches what it has already sent needs this to tell that a transfer was
+ * dropped and its cache no longer matches the panel.
+ */
+uint32_t u8g2_esp32_i2c_error_count(void);
 
 uint8_t u8g2_esp32_spi_byte_cb(u8x8_t *u8x8, uint8_t msg, uint8_t arg_int,
                                void *arg_ptr);

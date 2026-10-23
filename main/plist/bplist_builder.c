@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 airplay-esp32 contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #include <stdint.h>
 #include <string.h>
 
@@ -61,8 +64,7 @@ static bool bplist_utf8_next(const char **cursor, uint32_t *codepoint) {
     if (s[1] == 0 || (s[1] & 0xC0) != 0x80) {
       return false;
     }
-    cp = ((uint32_t)(s[0] & 0x1F) << 6) |
-         (uint32_t)(s[1] & 0x3F);
+    cp = ((uint32_t)(s[0] & 0x1F) << 6) | (uint32_t)(s[1] & 0x3F);
     if (cp < 0x80) {
       return false;
     }
@@ -72,23 +74,19 @@ static bool bplist_utf8_next(const char **cursor, uint32_t *codepoint) {
         (s[2] & 0xC0) != 0x80) {
       return false;
     }
-    cp = ((uint32_t)(s[0] & 0x0F) << 12) |
-         ((uint32_t)(s[1] & 0x3F) << 6) |
+    cp = ((uint32_t)(s[0] & 0x0F) << 12) | ((uint32_t)(s[1] & 0x3F) << 6) |
          (uint32_t)(s[2] & 0x3F);
     if (cp < 0x800 || (cp >= 0xD800 && cp <= 0xDFFF)) {
       return false;
     }
     n = 3;
   } else if ((s[0] & 0xF8) == 0xF0) {
-    if (s[1] == 0 || s[2] == 0 || s[3] == 0 ||
-        (s[1] & 0xC0) != 0x80 || (s[2] & 0xC0) != 0x80 ||
-        (s[3] & 0xC0) != 0x80) {
+    if (s[1] == 0 || s[2] == 0 || s[3] == 0 || (s[1] & 0xC0) != 0x80 ||
+        (s[2] & 0xC0) != 0x80 || (s[3] & 0xC0) != 0x80) {
       return false;
     }
-    cp = ((uint32_t)(s[0] & 0x07) << 18) |
-         ((uint32_t)(s[1] & 0x3F) << 12) |
-         ((uint32_t)(s[2] & 0x3F) << 6) |
-         (uint32_t)(s[3] & 0x3F);
+    cp = ((uint32_t)(s[0] & 0x07) << 18) | ((uint32_t)(s[1] & 0x3F) << 12) |
+         ((uint32_t)(s[2] & 0x3F) << 6) | (uint32_t)(s[3] & 0x3F);
     if (cp < 0x10000 || cp > 0x10FFFF) {
       return false;
     }
@@ -102,8 +100,8 @@ static bool bplist_utf8_next(const char **cursor, uint32_t *codepoint) {
   return true;
 }
 
-static bool bplist_write_utf8_string(uint8_t *out, size_t capacity,
-                                     size_t *pos, const char *value) {
+static bool bplist_write_utf8_string(uint8_t *out, size_t capacity, size_t *pos,
+                                     const char *value) {
   bool ascii_only = true;
   for (const uint8_t *p = (const uint8_t *)value; *p; p++) {
     if (*p & 0x80) {
@@ -143,7 +141,7 @@ static bool bplist_write_utf8_string(uint8_t *out, size_t capacity,
     } else {
       cp -= 0x10000;
       uint16_t high = (uint16_t)(0xD800 + (cp >> 10));
-      uint16_t low  = (uint16_t)(0xDC00 + (cp & 0x3FF));
+      uint16_t low = (uint16_t)(0xDC00 + (cp & 0x3FF));
       out[(*pos)++] = (uint8_t)(high >> 8);
       out[(*pos)++] = (uint8_t)high;
       out[(*pos)++] = (uint8_t)(low >> 8);
