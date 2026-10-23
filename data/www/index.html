@@ -350,7 +350,7 @@ async function saveSendspin(){
 async function saveName(){
   var n=document.getElementById('dev-name').value.trim();if(!n){msg('name-msg','Enter a name','err');return;}
   try{var r=await fetch('/api/device/name',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n})});
-    var d=await r.json();if(d.success){msg('name-msg','Saved! Restarting to apply the new name...','ok');}else{msg('name-msg',d.error,'err');}}
+    var d=await r.json();if(d.success){msg('name-msg','Saved! Restart to apply.','ok');loadInfo();}else{msg('name-msg',d.error,'err');}}
   catch(e){msg('name-msg','Error','err');}}
 async function startOTA(){
   var f=document.getElementById('fw-file').files[0];if(!f){msg('ota-msg','Select a file','err');return;}
