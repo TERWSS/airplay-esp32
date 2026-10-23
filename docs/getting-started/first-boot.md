@@ -23,6 +23,9 @@ That's it. Settings are stored in NVS and survive reboots and firmware updates.
 Once the device is on your network you can reach its web interface from a browser. Find
 its IP address in your router's list of connected clients, or via the serial monitor.
 
+Changing the device name in the control panel saves it and restarts the receiver so
+AirPlay and Bluetooth advertise the new name. Playback stops during the restart.
+
 | Page | Purpose |
 | --- | --- |
 | `/` | Setup and control panel — device name, WiFi, volume |
